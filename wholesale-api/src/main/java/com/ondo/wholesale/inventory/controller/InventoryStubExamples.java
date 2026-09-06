@@ -1,11 +1,8 @@
 package com.ondo.wholesale.inventory.controller;
 
 import com.ondo.wholesale.inventory.domain.StockMovementType;
-import com.ondo.wholesale.inventory.dto.InboundCreatedResponse;
-import com.ondo.wholesale.inventory.dto.InboundItemResponse;
 import com.ondo.wholesale.inventory.dto.StockMovementResponse;
 
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -16,15 +13,6 @@ final class InventoryStubExamples {
     private static final ZoneOffset KST = ZoneOffset.ofHours(9);
 
     private InventoryStubExamples() {
-    }
-
-    static InboundCreatedResponse createdInbound() {
-        return new InboundCreatedResponse(
-                4102L,
-                OffsetDateTime.of(2026, 8, 19, 14, 30, 0, 0, KST),
-                List.of(new InboundItemResponse(
-                        77301L, 90231L, 18, 1, 50,
-                        new BigDecimal("8500.00"), 50, 1284, new BigDecimal("8412.35"))));
     }
 
     static StockMovementResponse adjustment() {

@@ -5,6 +5,7 @@ import com.ondo.wholesale.common.response.ApiResponseBodyAdvice;
 import com.ondo.wholesale.common.trace.TraceIdFilter;
 import com.ondo.wholesale.config.SecurityConfig;
 import com.ondo.wholesale.inventory.controller.InventoryController;
+import com.ondo.wholesale.inventory.service.InboundCommandService;
 import com.ondo.wholesale.security.ApprovedAuthorizationManager;
 import com.ondo.wholesale.security.RestAccessDeniedHandler;
 import com.ondo.wholesale.security.RestAuthenticationEntryPoint;
@@ -12,6 +13,7 @@ import com.ondo.wholesale.security.support.TestSecuritySupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -34,20 +36,9 @@ class InventoryStubApiTest {
     @Autowired
     private MockMvc mvc;
 
-    @Test
-    void 입고는_201로_로트별_변동후_재고와_평균원가를_내린다() throws Exception {
-        mvc.perform(post("/api/wholesale/inbounds")
-                        .with(TestSecuritySupport.approved())
-                        .header("Idempotency-Key", "01J9XKQ7ZC8N4T2V6M0P3RWXYZ")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                { "items": [ { "variantId": 90231, "qty": 50, "unitCost": 8500 } ] }
-                                """))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.items[0].remainingQty").value(50))
-                .andExpect(jsonPath("$.data.items[0].qtyAfter").value(1284))
-                .andExpect(jsonPath("$.data.items[0].avgCostAfter").value(8412.35));
-    }
+    // 입고는 실구현으로 교체됐다 — InboundCreateIntegrationTest 가 본다
+    @MockitoBean
+    private InboundCommandService inboundCommandService;
 
     @Test
     void 재고조정은_201로_ADJUST_이력_한줄을_내린다() throws Exception {

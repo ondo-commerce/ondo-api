@@ -10,7 +10,7 @@
 CREATE TABLE wholesale.inbound_idempotency (
     wholesaler_id    bigint      NOT NULL REFERENCES wholesale.wholesaler (id),
     idempotency_key  varchar(64) NOT NULL,                    -- 폼이 만든 UUID/ULID
-    request_hash     char(64)    NOT NULL,                    -- 정렬 직렬화 SHA-256 hex
+    request_hash     varchar(64) NOT NULL,                    -- 정렬 직렬화 SHA-256 hex
     inbound_id       bigint      NOT NULL REFERENCES wholesale.inbound (id),
     response_body    text        NOT NULL,                    -- 첫 201 의 data 페이로드 JSON
     created_at       timestamptz NOT NULL DEFAULT now(),

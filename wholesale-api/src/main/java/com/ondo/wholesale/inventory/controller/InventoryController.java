@@ -5,10 +5,16 @@ import com.ondo.wholesale.inventory.dto.InboundCreateRequest;
 import com.ondo.wholesale.inventory.dto.InboundCreatedResponse;
 import com.ondo.wholesale.inventory.dto.StockAdjustmentRequest;
 import com.ondo.wholesale.inventory.dto.StockMovementResponse;
+import com.ondo.wholesale.inventory.service.InboundCommandService;
+import com.ondo.wholesale.security.WholesalePrincipal;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,13 +29,15 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 재고 계약 스텁 (MUL-83) — 원본: api-lite/03_재고. example 응답만 반환하며
- * 실구현이 서비스 계층으로 교체한다. 인증·봉투는 실서버와 동일하게 동작한다.
+ * 재고 API (MUL-72) — 원본 계약: api-lite/03_재고. 조정·이력은 아직 계약 스텁이다.
  */
 @Tag(name = "03 재고")
 @RestController
 @RequestMapping("/api/wholesale")
+@RequiredArgsConstructor
 public class InventoryController {
+
+    private final InboundCommandService inboundCommandService;
 
     @Operation(summary = "입고 등록 (Idempotency-Key 필수)", description = """
             입고 헤더 1건 + 라인(로트) N건을 등록하고 재고를 올린다. 단가가 다르면 다른 로트 —
@@ -38,12 +46,21 @@ public class InventoryController {
 
             에러: 400 `DUPLICATE_LOT` · `INVARIANT_VIOLATED` / 404 `RESOURCE_NOT_FOUND` /
             409 `IDEMPOTENCY_KEY_REUSED` · `STATE_CONFLICT`""")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "201", description = "첫 등록", useReturnTypeSchema = true),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200", description = "같은 키 재요청(replay) — 첫 응답과 동일 본문",
+                    useReturnTypeSchema = true)})
     @PostMapping("/inbounds")
-    @ResponseStatus(HttpStatus.CREATED)
-    public InboundCreatedResponse createInbound(
+    public ResponseEntity<InboundCreatedResponse> createInbound(
+            @AuthenticationPrincipal WholesalePrincipal principal,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @RequestBody InboundCreateRequest request) {
-        return InventoryStubExamples.createdInbound();
+        InboundCommandService.InboundResult result =
+                inboundCommandService.create(principal.wholesalerId(), idempotencyKey, request);
+        return ResponseEntity.status(result.replayed() ? HttpStatus.OK : HttpStatus.CREATED)
+                .body(result.response());
     }
 
     @Operation(summary = "재고 조정 (실사 반영)", description = """
