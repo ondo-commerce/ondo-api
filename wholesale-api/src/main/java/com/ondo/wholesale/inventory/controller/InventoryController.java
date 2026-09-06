@@ -6,6 +6,7 @@ import com.ondo.wholesale.inventory.dto.InboundCreatedResponse;
 import com.ondo.wholesale.inventory.dto.StockAdjustmentRequest;
 import com.ondo.wholesale.inventory.dto.StockMovementResponse;
 import com.ondo.wholesale.inventory.service.InboundCommandService;
+import com.ondo.wholesale.inventory.service.StockAdjustmentService;
 import com.ondo.wholesale.security.WholesalePrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -38,6 +39,7 @@ import java.util.List;
 public class InventoryController {
 
     private final InboundCommandService inboundCommandService;
+    private final StockAdjustmentService stockAdjustmentService;
 
     @Operation(summary = "입고 등록 (Idempotency-Key 필수)", description = """
             입고 헤더 1건 + 라인(로트) N건을 등록하고 재고를 올린다. 단가가 다르면 다른 로트 —
@@ -71,9 +73,10 @@ public class InventoryController {
             409 `STOCK_BELOW_ZERO` · `STOCK_BELOW_ALLOCATED`(errors[].data 에 취소 후보 포장 목록)""")
     @PostMapping("/variants/{variantId}/stock-adjustments")
     @ResponseStatus(HttpStatus.CREATED)
-    public StockMovementResponse adjustStock(@PathVariable Long variantId,
+    public StockMovementResponse adjustStock(@AuthenticationPrincipal WholesalePrincipal principal,
+                                             @PathVariable Long variantId,
                                              @RequestBody StockAdjustmentRequest request) {
-        return InventoryStubExamples.adjustment();
+        return stockAdjustmentService.adjust(principal.wholesalerId(), variantId, request);
     }
 
     @Operation(summary = "재고 변동 이력", description = """

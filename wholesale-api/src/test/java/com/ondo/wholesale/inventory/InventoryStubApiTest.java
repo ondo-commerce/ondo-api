@@ -6,6 +6,7 @@ import com.ondo.wholesale.common.trace.TraceIdFilter;
 import com.ondo.wholesale.config.SecurityConfig;
 import com.ondo.wholesale.inventory.controller.InventoryController;
 import com.ondo.wholesale.inventory.service.InboundCommandService;
+import com.ondo.wholesale.inventory.service.StockAdjustmentService;
 import com.ondo.wholesale.security.ApprovedAuthorizationManager;
 import com.ondo.wholesale.security.RestAccessDeniedHandler;
 import com.ondo.wholesale.security.RestAuthenticationEntryPoint;
@@ -36,21 +37,12 @@ class InventoryStubApiTest {
     @Autowired
     private MockMvc mvc;
 
-    // 입고는 실구현으로 교체됐다 — InboundCreateIntegrationTest 가 본다
+    // 입고·조정은 실구현으로 교체됐다 — InboundCreateIntegrationTest·StockAdjustmentIntegrationTest 가 본다
     @MockitoBean
     private InboundCommandService inboundCommandService;
 
-    @Test
-    void 재고조정은_201로_ADJUST_이력_한줄을_내린다() throws Exception {
-        mvc.perform(post("/api/wholesale/variants/90231/stock-adjustments")
-                        .with(TestSecuritySupport.approved())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{ \"qtyChange\": -5 }"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.type").value("ADJUST"))
-                .andExpect(jsonPath("$.data.qtyAfter").value(91))
-                .andExpect(jsonPath("$.data.refType").value((Object) null));
-    }
+    @MockitoBean
+    private StockAdjustmentService stockAdjustmentService;
 
     @Test
     void 재고이력은_data배열과_페이징meta를_함께_내린다() throws Exception {

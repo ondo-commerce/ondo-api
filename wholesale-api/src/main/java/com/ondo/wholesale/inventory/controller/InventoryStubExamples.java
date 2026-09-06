@@ -15,12 +15,6 @@ final class InventoryStubExamples {
     private InventoryStubExamples() {
     }
 
-    static StockMovementResponse adjustment() {
-        return new StockMovementResponse(
-                55021L, 90231L, StockMovementType.ADJUST, 96, -5, 91, null, null,
-                OffsetDateTime.of(2026, 8, 19, 14, 30, 0, 0, KST));
-    }
-
     static List<StockMovementResponse> movements() {
         return List.of(new StockMovementResponse(
                 55021L, 90231L, StockMovementType.IN, 83, 50, 133, "INBOUND_ITEM", 77301L,

@@ -24,4 +24,21 @@ public final class InventoryFixture {
         jdbc.update("update wholesale.variant set stock_qty = ?, reserved_qty = ? where id = ?",
                 stockQty, reservedQty, variantId);
     }
+
+    /** 입고 헤더 한 건 — 로트를 심으려면 먼저 필요하다. */
+    public static long 입고를_넣는다(JdbcTemplate jdbc, long wholesalerId) {
+        return jdbc.queryForObject("""
+                insert into wholesale.inbound (wholesaler_id, received_at)
+                values (?, now()) returning id
+                """, Long.class, wholesalerId);
+    }
+
+    /** 로트 한 건 — 잔량을 입고량과 따로 받아 이미 일부 소진된 로트도 심을 수 있다. */
+    public static long 로트를_넣는다(JdbcTemplate jdbc, long inboundId, long variantId,
+                               int qty, int remainingQty, String unitCost) {
+        return jdbc.queryForObject("""
+                insert into wholesale.inbound_item (inbound_id, variant_id, qty, remaining_qty, unit_cost)
+                values (?, ?, ?, ?, ?::numeric) returning id
+                """, Long.class, inboundId, variantId, qty, remainingQty, unitCost);
+    }
 }
