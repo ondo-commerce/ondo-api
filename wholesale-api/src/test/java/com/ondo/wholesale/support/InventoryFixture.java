@@ -41,4 +41,14 @@ public final class InventoryFixture {
                 values (?, ?, ?, ?, ?::numeric) returning id
                 """, Long.class, inboundId, variantId, qty, remainingQty, unitCost);
     }
+
+    /** 원장 한 줄 — 이력 조회 테스트용이라 기록 시각을 직접 받는다. */
+    public static long 원장을_넣는다(JdbcTemplate jdbc, long variantId, String type,
+                               int qtyChange, int qtyAfter, String refType, Long refId,
+                               java.time.OffsetDateTime createdAt) {
+        return jdbc.queryForObject("""
+                insert into wholesale.stock_movement (variant_id, type, qty_change, qty_after, ref_type, ref_id, created_at)
+                values (?, ?, ?, ?, ?, ?, ?) returning id
+                """, Long.class, variantId, type, qtyChange, qtyAfter, refType, refId, createdAt);
+    }
 }

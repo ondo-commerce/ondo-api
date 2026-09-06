@@ -7,6 +7,8 @@ import com.ondo.wholesale.inventory.dto.StockAdjustmentRequest;
 import com.ondo.wholesale.inventory.dto.StockMovementResponse;
 import com.ondo.wholesale.inventory.service.InboundCommandService;
 import com.ondo.wholesale.inventory.service.StockAdjustmentService;
+import com.ondo.wholesale.inventory.service.StockMovementListQuery;
+import com.ondo.wholesale.inventory.service.StockMovementQueryService;
 import com.ondo.wholesale.security.WholesalePrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -30,7 +32,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 재고 API (MUL-72) — 원본 계약: api-lite/03_재고. 조정·이력은 아직 계약 스텁이다.
+ * 재고 API (MUL-72) — 원본 계약: api-lite/03_재고.
  */
 @Tag(name = "03 재고")
 @RestController
@@ -40,6 +42,7 @@ public class InventoryController {
 
     private final InboundCommandService inboundCommandService;
     private final StockAdjustmentService stockAdjustmentService;
+    private final StockMovementQueryService stockMovementQueryService;
 
     @Operation(summary = "입고 등록 (Idempotency-Key 필수)", description = """
             입고 헤더 1건 + 라인(로트) N건을 등록하고 재고를 올린다. 단가가 다르면 다른 로트 —
@@ -86,6 +89,7 @@ public class InventoryController {
             에러: 400 `VALIDATION_FAILED` / 404 `RESOURCE_NOT_FOUND`""")
     @GetMapping("/variants/{variantId}/stock-movements")
     public ApiResponse<List<StockMovementResponse>> stockMovements(
+            @AuthenticationPrincipal WholesalePrincipal principal,
             @PathVariable Long variantId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
@@ -93,8 +97,7 @@ public class InventoryController {
             @RequestParam(required = false, defaultValue = "0") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size,
             @RequestParam(required = false) String sort) {
-        return ApiResponse.paged(
-                InventoryStubExamples.movements(),
-                new ApiResponse.PageMeta(0, 20, 41, 3));
+        StockMovementListQuery query = StockMovementListQuery.of(type, from, to, page, size, sort);
+        return stockMovementQueryService.list(principal.wholesalerId(), variantId, query);
     }
 }
