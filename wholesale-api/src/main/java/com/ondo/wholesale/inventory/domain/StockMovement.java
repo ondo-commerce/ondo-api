@@ -1,7 +1,5 @@
 package com.ondo.wholesale.inventory.domain;
 
-import com.ondo.wholesale.inventory.StockMovementType;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -51,10 +49,11 @@ public class StockMovement {
     @Column(name = "qty_after", nullable = false, updatable = false)
     private int qtyAfter;
 
-    @Column(name = "ref_type", nullable = false, length = 30, updatable = false)
+    /** 조정(ADJUST)은 출처가 없어 null 이다 (V7) — 입고 IN·출고 OUT 은 로트를 가리킨다. */
+    @Column(name = "ref_type", length = 30, updatable = false)
     private String refType;
 
-    @Column(name = "ref_id", nullable = false, updatable = false)
+    @Column(name = "ref_id", updatable = false)
     private Long refId;
 
     @CreationTimestamp

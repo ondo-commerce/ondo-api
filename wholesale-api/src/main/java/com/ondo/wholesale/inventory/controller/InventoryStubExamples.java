@@ -1,5 +1,6 @@
-package com.ondo.wholesale.inventory;
+package com.ondo.wholesale.inventory.controller;
 
+import com.ondo.wholesale.inventory.domain.StockMovementType;
 import com.ondo.wholesale.inventory.dto.InboundCreatedResponse;
 import com.ondo.wholesale.inventory.dto.InboundItemResponse;
 import com.ondo.wholesale.inventory.dto.StockMovementResponse;

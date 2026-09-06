@@ -1,4 +1,4 @@
-package com.ondo.wholesale.inventory;
+package com.ondo.wholesale.inventory.controller;
 
 import com.ondo.wholesale.common.response.ApiResponse;
 import com.ondo.wholesale.inventory.dto.InboundCreateRequest;

@@ -4,6 +4,7 @@ import com.ondo.wholesale.common.error.ErrorResponseWriter;
 import com.ondo.wholesale.common.response.ApiResponseBodyAdvice;
 import com.ondo.wholesale.common.trace.TraceIdFilter;
 import com.ondo.wholesale.config.SecurityConfig;
+import com.ondo.wholesale.inventory.controller.InventoryController;
 import com.ondo.wholesale.security.ApprovedAuthorizationManager;
 import com.ondo.wholesale.security.RestAccessDeniedHandler;
 import com.ondo.wholesale.security.RestAuthenticationEntryPoint;

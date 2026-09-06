@@ -1,6 +1,6 @@
 package com.ondo.wholesale.inventory.dto;
 
-import com.ondo.wholesale.inventory.StockMovementType;
+import com.ondo.wholesale.inventory.domain.StockMovementType;
 
 import java.time.OffsetDateTime;
 

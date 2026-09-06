@@ -98,6 +98,21 @@ public class Variant {
         this.reservedQty -= qty;
     }
 
+    /** 입고(MUL-72)가 실물을 들인다 — 실재고만 오른다. 평균원가는 {@link #repriceAvgCost}가 따로 맞춘다. */
+    public void receive(int qty) {
+        this.stockQty += qty;
+    }
+
+    /** 재고 조정(MUL-72) — 부호 포함 증감. 0 미만·예약 미만 검증은 호출부가 락 아래서 끝낸다. */
+    public void adjust(int qtyChange) {
+        this.stockQty += qtyChange;
+    }
+
+    /** 평균원가 캐시 갱신 — 진실은 로트 잔량이고, 재계산은 StockLedger 가 한다 (MUL-72). */
+    public void repriceAvgCost(BigDecimal avgCost) {
+        this.avgCost = avgCost;
+    }
+
     public void softDelete() {
         this.deletedAt = OffsetDateTime.now();
     }

@@ -1,6 +1,6 @@
 package com.ondo.wholesale.inventory.domain;
 
-import com.ondo.wholesale.inventory.StockMovementType;
+import com.ondo.wholesale.inventory.domain.StockMovementType;
 import com.ondo.wholesale.inventory.repository.StockMovementRepository;
 import com.ondo.wholesale.support.MasterDataFixture;
 import com.ondo.wholesale.support.PostgresTestSupport;
