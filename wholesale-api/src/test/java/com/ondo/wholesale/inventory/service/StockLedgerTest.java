@@ -166,6 +166,38 @@ class StockLedgerTest extends PostgresTestSupport {
         assertThat(movement.getRefId()).isEqualTo(991L);
     }
 
+    @Test
+    void 출고가_로트_경계를_넘으면_평균원가가_남은_로트_기준으로_재계산된다() {
+        jdbc.update("update wholesale.variant set reserved_qty = 12 where id = ?", variantId);
+        Variant variant = variantRepository.findById(variantId).orElseThrow();
+        long 싼로트 = 입고를_기록한다(variant, 10, "1000.00").getId();
+        long 비싼로트 = 입고를_기록한다(variant, 10, "2000.00").getId();
+        // 출고 전엔 두 로트 잔량가중 — (10×1000 + 10×2000) / 20 = 1500
+        assertThat(variant.getAvgCost()).isEqualByComparingTo("1500.000000");
+
+        stockLedger.recordOutbound(variant, 12, "OUTBOUND", 992L);
+
+        // 싼 로트 전량 + 비싼 로트 2개 소진 — 남은 건 비싼 로트 8개뿐이라 평균원가가 2000 으로 바뀐다
+        assertThat(잔량(싼로트)).isZero();
+        assertThat(잔량(비싼로트)).isEqualTo(8);
+        assertThat(variant.getStockQty()).isEqualTo(8);
+        assertThat(variant.getAvgCost()).isEqualByComparingTo("2000.000000");
+    }
+
+    @Test
+    void 잔량가중_평균이_나누어떨어지지_않으면_소수_6자리에서_반올림된다() {
+        jdbc.update("update wholesale.variant set reserved_qty = 1 where id = ?", variantId);
+        Variant variant = variantRepository.findById(variantId).orElseThrow();
+        입고를_기록한다(variant, 3, "1000.00");
+        입고를_기록한다(variant, 7, "2000.00");
+        assertThat(variant.getAvgCost()).isEqualByComparingTo("1700.000000");
+
+        stockLedger.recordOutbound(variant, 1, "OUTBOUND", 993L);
+
+        // 잔량 2개@1000 + 7개@2000 = 16000/9 = 1777.777… — scale 6 HALF_UP
+        assertThat(variant.getAvgCost()).isEqualByComparingTo("1777.777778");
+    }
+
     private InboundItem 입고를_기록한다(Variant variant, int qty, String unitCost) {
         InboundItem lot = inboundItemRepository.save(
                 inbound.addLot(variant.getId(), qty, new BigDecimal(unitCost)));
