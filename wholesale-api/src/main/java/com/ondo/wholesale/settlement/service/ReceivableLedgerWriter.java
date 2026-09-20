@@ -26,6 +26,12 @@ import java.util.List;
  * 정렬·페이지가 이 칸을 읽는다. 원장을 여기 말고 다른 데서 쓰면 둘이 어긋나므로 쓰는 곳을 하나로 둔다.
  *
  * <p>부르는 쪽의 트랜잭션 안에서만 돈다 — 원장만 커밋되고 원래 일이 롤백되는 일이 없게.
+ *
+ * <p><b>잠금이 값을 지키는 게 아니라 순서를 지킨다</b> (MUL-143). 원장은 추가 전용이라
+ * 잔액 칸을 덮어쓰는 일이 없다. 문제는 두 요청이 <b>같은 잔액을 읽고 각자 이어 쓰는</b>
+ * 것이다 — 두 줄의 {@code balance_after} 가 같은 값에서 출발해 장부가 틀어진다.
+ * 무엇으로 순서를 세울지는 {@link LedgerWriteStrategy} 가 정하고, 셋을 같은 조건에서
+ * 재보려고 설정으로 갈아끼울 수 있게 뒀다.
  */
 @Component
 @RequiredArgsConstructor
@@ -33,6 +39,7 @@ public class ReceivableLedgerWriter {
 
     private final NamedParameterJdbcTemplate jdbc;
     private final LedgerEntryRepository ledgerEntryRepository;
+    private final LedgerWriteStrategySwitch strategy;
 
     /**
      * 원장 한 행의 재료. 부호는 종류가 정한다 — 틀리면 DB({@code receivable_ledger_sign_ck})가 거절한다.
@@ -64,7 +71,8 @@ public class ReceivableLedgerWriter {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public List<LedgerEntry> append(long partnerId, OffsetDateTime occurredAt, List<Line> lines) {
-        long balance = lockBalance(partnerId);
+        Snapshot snapshot = readBalance(partnerId);
+        long balance = snapshot.balance();
         List<LedgerEntry> written = new ArrayList<>(lines.size());
         for (Line line : lines) {
             balance += line.delta();
@@ -81,14 +89,51 @@ public class ReceivableLedgerWriter {
                     .occurredAt(occurredAt)
                     .build()));
         }
-        jdbc.update("update wholesale.partner set receivable_balance = :balance where id = :id",
-                new MapSqlParameterSource().addValue("balance", balance).addValue("id", partnerId));
+        writeBalance(partnerId, balance, snapshot.version());
         return written;
     }
 
-    private long lockBalance(long partnerId) {
-        return jdbc.queryForObject(
-                "select receivable_balance from wholesale.partner where id = :id for update",
-                new MapSqlParameterSource("id", partnerId), Long.class);
+    /** 잔액과 버전을 읽는다. 비관적 락이면 여기서 줄을 세운다. */
+    private Snapshot readBalance(long partnerId) {
+        String sql = "select receivable_balance, balance_version from wholesale.partner where id = :id"
+                + (strategy.current() == LedgerWriteStrategy.PESSIMISTIC ? " for update" : "");
+
+        return jdbc.queryForObject(sql, new MapSqlParameterSource("id", partnerId),
+                (rs, rowNum) -> new Snapshot(rs.getLong("receivable_balance"),
+                        rs.getLong("balance_version")));
     }
+
+    /**
+     * 요약 잔액을 갱신한다.
+     *
+     * <p>낙관적 락이면 읽을 때 본 버전을 조건에 넣는다. 그 사이 다른 요청이 올렸으면
+     * 0 행이 바뀌고, 그때 던지는 예외가 부르는 쪽의 트랜잭션을 되돌린다 — 원장 행만
+     * 남고 잔액이 안 바뀌면 둘이 어긋나므로 통째로 무르는 게 맞다.
+     */
+    private void writeBalance(long partnerId, long balance, long version) {
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("balance", balance)
+                .addValue("id", partnerId)
+                .addValue("version", version);
+
+        if (strategy.current() != LedgerWriteStrategy.OPTIMISTIC) {
+            jdbc.update("update wholesale.partner set receivable_balance = :balance where id = :id",
+                    params);
+            return;
+        }
+
+        int updated = jdbc.update("""
+                update wholesale.partner
+                   set receivable_balance = :balance,
+                       balance_version    = balance_version + 1
+                 where id = :id and balance_version = :version
+                """, params);
+
+        if (updated == 0) {
+            throw new LedgerConflictException(partnerId);
+        }
+    }
+
+    /** 읽은 시점의 잔액과 버전. 버전은 낙관적 락에서만 쓴다. */
+    private record Snapshot(long balance, long version) {}
 }
