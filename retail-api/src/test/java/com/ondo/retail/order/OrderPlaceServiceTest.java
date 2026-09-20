@@ -49,9 +49,10 @@ class OrderPlaceServiceTest {
     private final RetailerRepository retailerRepository = mock(RetailerRepository.class);
     private final ListingClient listingClient = mock(ListingClient.class);
     private final OrderClient orderClient = mock(OrderClient.class);
+    private final OrderDispatchStore dispatchStore = mock(OrderDispatchStore.class);
 
-    private final OrderPlaceService service =
-            new OrderPlaceService(writer, cartItemRepository, retailerRepository, listingClient, orderClient);
+    private final OrderPlaceService service = new OrderPlaceService(
+            writer, cartItemRepository, retailerRepository, listingClient, orderClient, dispatchStore);
 
     /** 장바구니 2줄 — 무드온 1줄(3장×12500) · 라온 1줄(2장×31000). */
     private final CartItem 무드온줄 = 장바구니줄(1L, 9001L, 3);
@@ -64,8 +65,8 @@ class OrderPlaceServiceTest {
                 9001L, 옵션(9001L, 무드온, "무드온", 12500),
                 9002L, 옵션(9002L, 라온, "라온", 31000)));
         given(retailerRepository.findById(소매처)).willReturn(java.util.Optional.of(소매처_객체()));
-        given(writer.open(anyLong(), any(), any())).willReturn(주문서(5001L, "20260906-1420-0001"));
-        given(writer.settle(anyLong(), anyLong(), anyBoolean(), any()))
+        given(writer.open(anyLong(), any(), any(), any())).willReturn(주문서(5001L, "20260906-1420-0001"));
+        given(writer.settle(anyLong(), anyLong(), anyBoolean(), any(), any()))
                 .willAnswer(inv -> 주문서(5001L, "20260906-1420-0001"));
         given(writer.findAccepted(any())).willReturn(java.util.Optional.empty());
     }
@@ -112,32 +113,63 @@ class OrderPlaceServiceTest {
     }
 
     @Test
-    @DisplayName("접수된 도매처의 장바구니 줄만 뺀다")
-    void 접수된_줄만_뺀다() {
+    @DisplayName("도매가 거절한 줄은 장바구니에 그대로 둔다")
+    void 거절된_줄은_장바구니에_남는다() {
         given(orderClient.place(any())).willAnswer(inv -> {
             WholesaleOrderCommand c = inv.getArgument(0);
             return c.wholesalerId() == 무드온
                     ? WholesaleOrderReceipt.accepted(8801L, 1, 37500)
-                    : WholesaleOrderReceipt.rejected("UPSTREAM_UNAVAILABLE", "도매처에 접수하지 못했어요");
+                    : WholesaleOrderReceipt.rejected("PRICE_CHANGED", "판매가가 바뀌었습니다.");
         });
 
         service.place(소매처, "key-3", 요청());
 
-        // 실패한 줄까지 빼면 사용자가 다시 담아야 한다
-        verify(writer).settle(5001L, 37500L, true, List.of(무드온줄));
+        // 다시 해도 같은 답이 오니 서버가 맡지 않는다. 사장님이 직접 정해야 한다
+        verify(writer).settle(5001L, 37500L, true, List.of(무드온줄), List.of());
+    }
+
+    @Test
+    @DisplayName("도매가 안 떠서 서버가 맡은 줄도 장바구니에서 뺀다 — 둘이 각자 주문하면 안 된다")
+    void 서버가_맡은_줄도_뺀다() {
+        given(orderClient.place(any())).willAnswer(inv -> {
+            WholesaleOrderCommand c = inv.getArgument(0);
+            return c.wholesalerId() == 무드온
+                    ? WholesaleOrderReceipt.accepted(8801L, 1, 37500)
+                    : WholesaleOrderReceipt.unreachable("UPSTREAM_UNAVAILABLE", "다시 시도하고 있어요");
+        });
+
+        PlaceOrderResponse response = service.place(소매처, "key-3b", 요청());
+
+        verify(writer).settle(5001L, 37500L, true, List.of(무드온줄), List.of(라온줄));
+        // 끝난 실패가 아니라는 걸 화면이 알아야 한다
+        assertThat(response.results().get(1).isPending()).isTrue();
     }
 
     @Test
     @DisplayName("전부 거절되면 502 다. 장바구니는 그대로 남는다")
     void 전부_거절되면_502다() {
         given(orderClient.place(any())).willReturn(
-                WholesaleOrderReceipt.rejected("UPSTREAM_UNAVAILABLE", "도매처에 접수하지 못했어요"));
+                WholesaleOrderReceipt.rejected("PRICE_CHANGED", "판매가가 바뀌었습니다."));
 
         assertThatThrownBy(() -> service.place(소매처, "key-4", 요청()))
                 .isInstanceOf(BusinessException.class);
 
         // 주문서는 FAILED 로 남긴다 — 지우면 왜 실패했는지도 멱등키도 사라진다
-        verify(writer).settle(5001L, 0L, false, List.of());
+        verify(writer).settle(5001L, 0L, false, List.of(), List.of());
+    }
+
+    @Test
+    @DisplayName("전부 못 들어가면 재시도를 켜지 않는다 — 안 보이는 주문이 나중에 생기면 안 된다")
+    void 전부_실패면_대기함을_접는다() {
+        given(orderClient.place(any())).willReturn(
+                WholesaleOrderReceipt.unreachable("UPSTREAM_UNAVAILABLE", "다시 시도하고 있어요"));
+
+        assertThatThrownBy(() -> service.place(소매처, "key-4b", 요청()))
+                .isInstanceOf(BusinessException.class);
+
+        // 주문서가 FAILED 라 내역에 안 보인다. 그 상태로 서버가 몰래 넣으면 안 된다
+        verify(dispatchStore).abandonAll(5001L);
+        verify(writer).settle(5001L, 0L, false, List.of(), List.of());
     }
 
     @Test
@@ -145,7 +177,7 @@ class OrderPlaceServiceTest {
     void 재시도로_이미_접수된_것은_성공이다() {
         // 도매는 409 만 주고 그 주문의 번호·금액은 안 준다
         given(orderClient.place(any())).willReturn(
-                new WholesaleOrderReceipt(true, null, null, null, null, "이미 접수된 주문이에요"));
+                new WholesaleOrderReceipt(true, null, null, null, null, "이미 접수된 주문이에요", false));
 
         PlaceOrderResponse response = service.place(소매처, "key-5", 요청());
 
@@ -187,7 +219,7 @@ class OrderPlaceServiceTest {
                 .isInstanceOf(BusinessException.class);
 
         verify(orderClient, never()).place(any());
-        verify(writer, never()).open(anyLong(), any(), any());
+        verify(writer, never()).open(anyLong(), any(), any(), any());
     }
 
     @Test

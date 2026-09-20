@@ -49,10 +49,12 @@ public class MockOrderData {
         return new PlaceOrderResponse(
                 5012L, "20260902-1420-0088", OffsetDateTime.now(), 62500,
                 List.of(
-                        new PlaceOrderResponse.Result(3L, "무드온", true, 88213L, 1, 62500, null, null),
+                        new PlaceOrderResponse.Result(3L, "무드온", true, 88213L, 1, 62500,
+                                null, null, false),
+                        // 도매가 안 떠서 서버가 맡아 둔 줄. 장바구니에서 빠져 있다 (MUL-141)
                         new PlaceOrderResponse.Result(9L, "라온", false, null, null, null,
                                 "UPSTREAM_UNAVAILABLE",
-                                "도매처에 접수하지 못했어요. 장바구니에 그대로 있어요")));
+                                "도매처에 접수하지 못했어요. 다시 시도하고 있어요", true)));
     }
 
     public List<OrderSummaryResponse> orders() {

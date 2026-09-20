@@ -49,6 +49,7 @@ public class OrderPlaceService {
     private final RetailerRepository retailerRepository;
     private final ListingClient listingClient;
     private final OrderClient orderClient;
+    private final OrderDispatchStore dispatchStore;
 
     public PlaceOrderResponse place(Long retailerId, String idempotencyKey, PlaceOrderRequest request) {
         // 연타의 두 번째 요청을 여기서 끊는다. 첫 요청이 이미 끝났으면 접수된 줄이
@@ -68,15 +69,25 @@ public class OrderPlaceService {
         Retailer retailer = retailerRepository.findById(retailerId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
 
-        OrderGroup group = writer.open(retailerId, idempotencyKey, request);
+        // 주문서와 접수 대기함을 한 트랜잭션에 쓴다 (MUL-139). 도매를 부르는 도중에
+        // 태스크가 내려가도 주문 의사가 남는다
+        OrderGroup group = writer.open(retailerId, idempotencyKey, request,
+                saved -> grouped.orderable().entrySet().stream()
+                        .map(e -> toCommand(saved, retailer, request, e.getKey(), e.getValue(), variants))
+                        .toList());
 
         // ── 트랜잭션 밖. 도매처마다 한 번씩 부른다 ──
         Map<Long, WholesaleOrderReceipt> receipts = new LinkedHashMap<>();
-        grouped.orderable().forEach((wholesalerId, lines) -> receipts.put(wholesalerId,
-                orderClient.place(toCommand(group, retailer, request, wholesalerId, lines, variants))));
+        grouped.orderable().forEach((wholesalerId, lines) -> {
+            WholesaleOrderReceipt receipt =
+                    orderClient.place(toCommand(group, retailer, request, wholesalerId, lines, variants));
+            receipts.put(wholesalerId, receipt);
+            writer.recordAttempt(group.getId(), wholesalerId, receipt);
+        });
 
         // 담아둔 사이 못 팔게 된 줄은 도매를 안 부르고 거절로 둔다. 부를 필요가 없다 —
         // 도매가 어차피 LISTING_NOT_ON_SALE 을 준다
+        // 대기함에도 안 넣는다 — 다시 보낼 이유가 없으니 처음부터 없는 줄이다
         grouped.unorderable().forEach((wholesalerId, lines) -> receipts.put(wholesalerId,
                 WholesaleOrderReceipt.rejected("LISTING_NOT_ON_SALE",
                         "판매가 끝난 상품이 있어요. 장바구니에 그대로 있어요")));
@@ -94,6 +105,8 @@ public class OrderPlaceService {
 
         List<PlaceOrderResponse.Result> results = new ArrayList<>();
         List<CartItem> acceptedItems = new ArrayList<>();
+        // 서버가 맡은 줄. 사장님이 다시 못 누르게 장바구니에서 뺀다 (MUL-141)
+        List<CartItem> pendingItems = new ArrayList<>();
         long acceptedAmount = 0;
 
         for (Map.Entry<Long, WholesaleOrderReceipt> entry : receipts.entrySet()) {
@@ -103,8 +116,12 @@ public class OrderPlaceService {
             String name = wholesalerName(lines, variants);
 
             if (!receipt.accepted()) {
+                // 도매가 안 떠서 못 넣은 것은 끝난 실패가 아니다. 서버가 다시 보낸다
+                if (receipt.retryable()) {
+                    pendingItems.addAll(lines);
+                }
                 results.add(new PlaceOrderResponse.Result(wholesalerId, name, false,
-                        null, null, null, receipt.reason(), receipt.message()));
+                        null, null, null, receipt.reason(), receipt.message(), receipt.retryable()));
                 continue;
             }
 
@@ -113,18 +130,25 @@ public class OrderPlaceService {
             acceptedAmount += amount;
             acceptedItems.addAll(lines);
             results.add(new PlaceOrderResponse.Result(wholesalerId, name, true,
-                    receipt.wholesaleOrderId(), receipt.orderNumber(), amount, null, receipt.message()));
+                    receipt.wholesaleOrderId(), receipt.orderNumber(), amount, null,
+                    receipt.message(), false));
         }
 
-        boolean anyAccepted = !acceptedItems.isEmpty();
-        OrderGroup settled = writer.settle(group.getId(), acceptedAmount, anyAccepted, acceptedItems);
-
-        if (!anyAccepted) {
+        if (acceptedItems.isEmpty()) {
             // 계약대로 "통합 주문을 안 만든 것" 으로 본다. 행은 FAILED 로 남겨
-            // 왜 실패했는지 볼 수 있게 하고 멱등키도 살린다
-            log.warn("도매처 전부가 거절했다. orderId={} 도매처={}", settled.getId(), receipts.keySet());
+            // 왜 실패했는지 볼 수 있게 하고 멱등키도 살린다.
+            //
+            // 대기함도 같이 접는다 (MUL-141). 주문서가 FAILED 라 내역에 안 보이는데
+            // 서버가 나중에 몰래 넣으면 사용자가 볼 수 없는 주문이 생긴다.
+            // 장바구니도 그대로 둔다 — 사용자가 직접 다시 누르는 게 지금 계약이다
+            dispatchStore.abandonAll(group.getId());
+            OrderGroup failed = writer.settle(group.getId(), 0, false, List.of(), List.of());
+            log.warn("도매처 전부가 거절했다. orderId={} 도매처={}", failed.getId(), receipts.keySet());
             throw new BusinessException(ErrorCode.UPSTREAM_UNAVAILABLE);
         }
+
+        OrderGroup settled = writer.settle(group.getId(), acceptedAmount, true,
+                acceptedItems, pendingItems);
 
         return new PlaceOrderResponse(settled.getId(), settled.getOrderNo(), settled.getOrderedAt(),
                 (int) acceptedAmount, results);

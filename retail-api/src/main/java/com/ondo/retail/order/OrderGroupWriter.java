@@ -6,10 +6,14 @@ import com.ondo.retail.common.error.BusinessException;
 import com.ondo.retail.common.error.ErrorCode;
 import com.ondo.retail.order.domain.OrderGroup;
 import com.ondo.retail.order.domain.OrderGroupStatus;
+import com.ondo.retail.order.domain.OrderDispatch;
 import com.ondo.retail.order.dto.PlaceOrderRequest;
+import com.ondo.retail.order.dto.WholesaleOrderCommand;
+import com.ondo.retail.order.dto.WholesaleOrderReceipt;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -37,8 +41,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class OrderGroupWriter {
 
     private final OrderGroupRepository orderGroupRepository;
+    private final OrderDispatchRepository dispatchRepository;
     private final OrderNoGenerator orderNoGenerator;
     private final CartItemRepository cartItemRepository;
+    private final OrderDispatchProperties properties;
 
     /**
      * 주문서를 연다. 같은 멱등키로 다시 왔으면 있던 걸 이어 쓴다.
@@ -50,14 +56,15 @@ public class OrderGroupWriter {
      * 처음과 다를 수 있다.
      */
     @Transactional
-    public OrderGroup open(Long retailerId, String idempotencyKey, PlaceOrderRequest request) {
+    public OrderGroup open(Long retailerId, String idempotencyKey, PlaceOrderRequest request,
+                           Function<OrderGroup, List<WholesaleOrderCommand>> commands) {
         String requestId = (idempotencyKey == null || idempotencyKey.isBlank())
                 // 열쇠를 안 보내면 연타를 막을 방법이 없다. 그래도 접수는 되게 두되
                 // 서로 다른 주문으로 본다 — request_id 가 NOT NULL 이라 값은 있어야 한다
                 ? "no-key-" + UUID.randomUUID()
                 : idempotencyKey;
 
-        return orderGroupRepository.findByRequestId(requestId)
+        OrderGroup group = orderGroupRepository.findByRequestId(requestId)
                 .map(existing -> {
                     // 남의 열쇠를 주워 쓰면 남의 주문서에 주문을 붙이게 된다
                     if (!existing.getRetailerId().equals(retailerId)) {
@@ -67,6 +74,67 @@ public class OrderGroupWriter {
                     return existing;
                 })
                 .orElseGet(() -> create(retailerId, requestId, request));
+
+        enqueue(group, commands.apply(group));
+        return group;
+    }
+
+    /**
+     * 도매에 보낼 명령을 대기함에 넣는다 (MUL-139).
+     *
+     * <p><b>실패했을 때가 아니라 지금 넣는다.</b> 주문서와 같은 트랜잭션이다. 도매를
+     * 부르는 도중에 태스크가 내려가면 "실패를 감지해 기록" 할 주체가 없어 주문 의사가
+     * 통째로 사라진다. 여기서 같이 써 두면 둘 다 되거나 둘 다 안 된다.
+     *
+     * <p>같은 멱등키로 다시 온 경우에는 이미 줄이 있다. 그대로 둔다 — 시도 횟수와
+     * 기한은 처음 눌렀을 때 기준이어야 한다. 기한이 갱신되면 다시 누를 때마다 무한정
+     * 늘어나 기한을 둔 뜻이 없어진다.
+     */
+    private void enqueue(OrderGroup group, List<WholesaleOrderCommand> commands) {
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime expiresAt = DispatchDeadline.of(group.getOrderedAt(), properties.maxWait());
+
+        for (WholesaleOrderCommand command : commands) {
+            if (dispatchRepository.findByOrderGroupIdAndWholesalerId(
+                    group.getId(), command.wholesalerId()).isPresent()) {
+                continue;
+            }
+            dispatchRepository.save(OrderDispatch.builder()
+                    .orderGroupId(group.getId())
+                    .wholesalerId(command.wholesalerId())
+                    .payload(command)
+                    // 지금 바로 동기로 부른다. 그게 실패하면 워커가 이 줄을 집는다
+                    .nextAttemptAt(now)
+                    .expiresAt(expiresAt)
+                    .build());
+        }
+    }
+
+    /**
+     * 동기 호출의 결과를 대기함에 반영한다 (MUL-139).
+     *
+     * <p>세 갈래다. 갈라두지 않으면 안 될 일을 계속 두드리게 된다.
+     *
+     * <ul>
+     *   <li><b>접수됨</b> — {@code SENT}. 끝이다
+     *   <li><b>도매가 거절</b> — {@code REJECTED}. 재고 부족·판매 종료는 다시 해도 같은
+     *       답이 오고, 사용자는 지금 알아야 한다
+     *   <li><b>도매가 안 뜸</b> — {@code PENDING} 그대로 둔다. 워커가 집어간다
+     * </ul>
+     */
+    @Transactional
+    public void recordAttempt(Long orderGroupId, Long wholesalerId, WholesaleOrderReceipt receipt) {
+        dispatchRepository.findByOrderGroupIdAndWholesalerId(orderGroupId, wholesalerId)
+                .ifPresent(dispatch -> {
+                    if (receipt.accepted()) {
+                        dispatch.markSent();
+                    } else if (!receipt.retryable()) {
+                        dispatch.markRejected(receipt.reason());
+                    } else {
+                        // PENDING 그대로. 시도 횟수만 올리고 워커에게 넘긴다
+                        dispatch.retryAt(dispatch.getNextAttemptAt(), receipt.reason());
+                    }
+                });
     }
 
     /**
@@ -107,21 +175,32 @@ public class OrderGroupWriter {
     /**
      * 도매 결과를 주문서에 반영한다.
      *
-     * <p>접수된 도매처의 장바구니 줄만 뺀다. 실패한 줄까지 빼면 사용자가 다시 담아야
-     * 한다 — 도매가 잠깐 못 받은 것뿐인데.
+     * <p><b>장바구니에서 빼는 기준이 바뀌었다</b> (MUL-141). 전에는 접수된 줄만 뺐다 —
+     * 실패한 줄은 남겨야 사용자가 다시 누를 수 있었다. 이제는 서버가 대신 보내므로
+     * <b>서버가 맡은 줄도 뺀다.</b> 안 빼면 사용자와 서버가 각자 주문해 같은 물건이
+     * 두 번 들어간다. 도매의 멱등 제약은 이걸 못 막는다 — 사용자가 다시 누른 건
+     * 주문서가 달라서 서로 다른 주문으로 보인다.
      *
-     * @param anyAccepted 한 곳이라도 받아졌는지. 하나도 없으면 {@code FAILED} 로 남긴다.
-     *                    지우지 않는 건 왜 실패했는지 남기고 멱등키를 살리기 위해서다
+     * <p>맡은 줄은 서버가 손을 뗄 때 돌려준다({@link DispatchCartReturn}).
+     * 재고 부족처럼 다시 해도 소용없는 거절만 지금 그대로 남는다.
+     *
+     * @param acceptedCartItems 접수된 줄. 영영 빠진다
+     * @param pendingCartItems  서버가 맡은 줄. 포기·취소하면 돌아온다
+     * @param anyAccepted       한 곳이라도 받아졌는지. 하나도 없으면 {@code FAILED} 로 남긴다.
+     *                          지우지 않는 건 왜 실패했는지 남기고 멱등키를 살리기 위해서다
      */
     @Transactional
     public OrderGroup settle(Long orderGroupId, long acceptedAmount, boolean anyAccepted,
-                             List<CartItem> acceptedCartItems) {
+                             List<CartItem> acceptedCartItems, List<CartItem> pendingCartItems) {
         OrderGroup group = orderGroupRepository.findById(orderGroupId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INTERNAL_ERROR));
 
         group.settle(acceptedAmount, anyAccepted);
         if (!acceptedCartItems.isEmpty()) {
             cartItemRepository.deleteAll(acceptedCartItems);
+        }
+        if (!pendingCartItems.isEmpty()) {
+            cartItemRepository.deleteAll(pendingCartItems);
         }
         return group;
     }

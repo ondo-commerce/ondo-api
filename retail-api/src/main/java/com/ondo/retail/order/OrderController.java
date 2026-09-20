@@ -49,6 +49,7 @@ public class OrderController {
     private final OrderPlaceService placeService;
     private final CheckoutService checkoutService;
     private final OrderQueryService queryService;
+    private final OrderDispatchStore dispatchStore;
 
     /**
      * 주문서. 장바구니에서 고른 것만 넘긴다.
@@ -126,6 +127,31 @@ public class OrderController {
     public ApiResponse<CancelOrderResponse> cancel(@PathVariable Long orderId,
                                                    @RequestBody(required = false) CancelOrderRequest request) {
         return ApiResponse.of(mock.cancel());
+    }
+
+    /**
+     * 접수를 기다리는 건을 취소한다 (MUL-141).
+     *
+     * <p>이미 도매에 들어간 주문을 무르는 {@code /cancel} 과 다르다. 이건 <b>아직 도매에
+     * 안 들어간</b> 건이다 — 도매가 안 떠서 서버가 대신 다시 보내는 중인 줄을 접는다.
+     *
+     * <p>기다리라고 해놓고 빠져나갈 길이 없으면 안 된다. 동대문은 주문 시점이 중요해서
+     * 사장님이 다른 도매에서 사기로 할 수 있다. 접으면 물건은 장바구니로 돌아온다.
+     *
+     * <p>이미 접수됐거나 끝난 건이면 409 다 — 조용히 200 을 주면 취소된 줄 알고 딴 데서
+     * 또 산다.
+     */
+    @Operation(summary = "접수 대기 취소",
+               description = "도매가 안 떠서 대기 중인 건을 접는다. 물건은 장바구니로 돌아온다.")
+    @PostMapping("/orders/{orderId}/dispatches/{wholesalerId}/cancel")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void cancelDispatch(@PathVariable Long orderId,
+                               @PathVariable Long wholesalerId,
+                               Authentication authentication) {
+        boolean cancelled = dispatchStore.cancel(orderId, wholesalerId, retailerId(authentication));
+        if (!cancelled) {
+            throw new BusinessException(ErrorCode.DISPATCH_NOT_PENDING);
+        }
     }
 
     private static Long retailerId(Authentication authentication) {
