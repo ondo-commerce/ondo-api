@@ -51,14 +51,25 @@ resource "aws_db_instance" "retail" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.db_retail.id]
 
-  # AZ 하나가 죽어도 산다. 예비본은 평소에 못 읽는다 — 읽기 분산용이 아니다
-  multi_az = true
+  # 켜면 다른 AZ 에 예비본이 생겨 AZ 하나가 죽어도 산다. 대신 요금이 두 배다.
+  # 지금은 껐다 — 사용자가 0명이라 AZ 장애로 잃을 게 없는데 둘 값은 그대로 나갔다.
+  # 예비본은 평소에 못 읽으므로 끈다고 읽기가 느려지지도 않는다.
+  # 발표나 시연 전에 이 줄만 true 로 되돌리면 된다
+  multi_az = false
 
   # 인터넷에서 직접 못 붙는다. 서브넷에 나가는 길이 없어서 어차피 안 되지만 명시한다
   publicly_accessible = false
 
-  backup_retention_period    = 1 # Multi-AZ 는 1 이상이어야 한다. 개발 환경이라 최소로
+  # 1 일치는 남긴다. Multi-AZ 를 끄면 0 도 되지만, 0 은 시점 복구가 아예 없어진다 —
+  # 실수로 지운 걸 되돌릴 방법이 사라지는 값이라 아끼는 금액에 비해 손해가 크다.
+  # 백업은 DB 크기(20GB)까지 공짜라 실제로 더 나가는 돈도 없다
+  backup_retention_period    = 1
   auto_minor_version_upgrade = true
+
+  # 위 변경을 다음 유지보수 창까지 기다리지 않고 바로 적용한다.
+  # Multi-AZ 를 끄는 건 예비본을 떼는 것뿐이라 끊김이 없다.
+  # ⚠️ 인스턴스 클래스처럼 교체가 필요한 변경도 즉시 적용되므로 운영에서는 뺀다
+  apply_immediately = true
 
   # ⚠️ 개발 환경이라 지우기 쉽게 둔다. 12월에 계정이 닫히면 정리해야 한다.
   # 운영 환경을 만들 때는 둘 다 반대로 간다
@@ -88,11 +99,14 @@ resource "aws_db_instance" "wholesale" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.db_wholesale.id]
 
-  multi_az            = true
+  # 소매와 같은 이유로 껐다. 되돌릴 때는 두 줄을 같이 되돌린다
+  multi_az            = false
   publicly_accessible = false
 
   backup_retention_period    = 1
   auto_minor_version_upgrade = true
+
+  apply_immediately = true
 
   deletion_protection = false
   skip_final_snapshot = true
