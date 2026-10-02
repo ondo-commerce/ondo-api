@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────
-# A · 네트워크 — VPC · 서브넷 6 · IGW · NAT 2 · 라우팅
+# A · 네트워크 — VPC · 서브넷 6 · IGW · NAT · 라우팅
 #
 # 십의 자리가 층, 일의 자리가 AZ 다. 10.0.12.x 를 보면 「앱 · AZ 2번」이 바로 읽힌다.
 # /24 로 넉넉히 잡은 건 서브넷은 만든 뒤에 크기를 못 바꾸고 사설 IP 는 공짜라서다.
@@ -22,6 +22,16 @@ locals {
   public_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]   # ALB · NAT
   app_cidrs    = ["10.0.11.0/24", "10.0.12.0/24"] # ECS 태스크
   db_cidrs     = ["10.0.21.0/24", "10.0.22.0/24"] # RDS
+
+  # NAT 을 몇 개 둘지. 원래 모양은 AZ 마다 하나(length(local.azs))다.
+  # 지금은 하나로 줄였다 — NAT 은 트래픽이 0 이어도 켜둔 시간만큼 돈을 받고,
+  # 개당 월 4만원대다. 둘째 AZ 의 앱은 첫째 AZ 의 NAT 을 빌려 쓴다.
+  #
+  # 대신 잃는 것: 첫째 AZ 가 통째로 죽으면 양쪽 앱 모두 밖으로 못 나간다
+  # (ECR 이미지 받기 · Secrets Manager 호출). 들어오는 요청은 ALB 가
+  # 살아있는 쪽으로 보내므로 이미 떠 있는 태스크는 계속 응답한다.
+  # 운영 환경을 만들 때는 length(local.azs) 로 되돌린다
+  nat_count = 1
 }
 
 # 이 리전에서 실제로 쓸 수 있는 AZ 목록. 하드코딩하면 계정마다 다를 수 있다
@@ -87,20 +97,19 @@ resource "aws_subnet" "db" {
   tags = { Name = "${local.prefix}-db-${count.index + 1}" }
 }
 
-# ── NAT · AZ 마다 하나 ────────────────────────────────────────
+# ── NAT ───────────────────────────────────────────────────────
 #
 # ⚠️ 여기서부터 돈이 나간다. 켜두기만 해도 시간당 과금이고 나가는 데이터에도 붙는다.
 #
-# 하나로 줄이면 절반이 아껴지지만, 그 AZ 가 죽으면 반대쪽 앱도 밖으로 못 나간다.
-# 「AZ 하나가 통째로 죽어도 서비스가 산다」를 지키려면 둘이어야 한다.
+# 개수는 local.nat_count 가 정한다. 왜 하나로 줄였는지는 거기 적어 뒀다.
 resource "aws_eip" "nat" {
-  count  = length(local.azs)
+  count  = local.nat_count
   domain = "vpc"
   tags   = { Name = "${local.prefix}-nat-eip-${count.index + 1}" }
 }
 
 resource "aws_nat_gateway" "main" {
-  count = length(local.azs)
+  count = local.nat_count
 
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
@@ -133,8 +142,10 @@ resource "aws_route_table_association" "public" {
 }
 
 # ── 라우팅 · 앱 ───────────────────────────────────────────────
-# AZ 마다 따로 둔다. 각자 자기 AZ 의 NAT 로 나가야 한다 —
-# 하나로 합치면 AZ 를 건너 통신하게 되고, 그 NAT 가 죽으면 양쪽 다 막힌다
+# AZ 마다 따로 둔다. NAT 이 AZ 마다 있으면 각자 자기 AZ 의 NAT 로 나가고,
+# 지금처럼 하나뿐이면 둘 다 그 하나를 가리킨다 — % 가 그 일을 한다.
+# 테이블 자체를 AZ 마다 두는 건 공짜라, nat_count 를 되돌리기만 하면
+# 라우팅은 손대지 않고 AZ 별로 갈라진다
 resource "aws_route_table" "app" {
   count = length(local.azs)
 
@@ -142,7 +153,7 @@ resource "aws_route_table" "app" {
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main[count.index].id
+    nat_gateway_id = aws_nat_gateway.main[count.index % local.nat_count].id
   }
 
   tags = { Name = "${local.prefix}-rt-app-${count.index + 1}" }
