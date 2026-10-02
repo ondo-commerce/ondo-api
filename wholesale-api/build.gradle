@@ -56,6 +56,16 @@ jacoco {
 tasks.named('test') {
 	useJUnitPlatform()
 
+	// 측정용 테스트는 평소에 안 돈다 (MUL-143). 스레드를 여럿 띄우고 결과를 파일로
+	// 내보내는 측정이라 일반 테스트와 섞이면 안 된다. 켜려면 -Dmeasure=true 를 준다.
+	//
+	//   ./gradlew test --tests '*Measurement*' -Dmeasure=true
+	//
+	// 그레이들은 시스템 속성을 테스트 JVM 에 자동으로 안 넘긴다. 필요한 것만 넘긴다
+	if (System.getProperty('measure') != null) {
+		systemProperty 'measure', System.getProperty('measure')
+	}
+
 	// 테스트 JVM 을 KST 로 고정한다 (MUL-105).
 	//
 	// 기간 필터는 운영 코드가 한국 날짜를 전제한다 — KstDays 가 Asia/Seoul 로

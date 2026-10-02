@@ -74,3 +74,18 @@ management:
 ondo:
   gateway:
     secret: ""
+
+  settlement:
+    ledger:
+      # 미수 잔액을 동시 쓰기로부터 지키는 방법 (MUL-143).
+      #
+      #   NONE         아무것도 안 한다. 깨지는 것을 보여주는 측정 전용
+      #   OPTIMISTIC   버전으로 검사하고 충돌하면 다시 한다
+      #   PESSIMISTIC  거래처 행을 FOR UPDATE 로 잠가 한 줄로 세운다
+      #
+      # 측정 결과 비관적을 골랐다. 같은 거래처에 동시 640건을 넣었을 때
+      # 잠금 없음은 잔액의 89%가 증발했고, 낙관적은 정확하지만 4,556번 재시도하고도
+      # 1건을 끝내 못 넣었다. 비관적은 정확하면서 잠금 없는 것보다 38ms 느릴 뿐이다.
+      # 잠금 안에서 원장 쓰기 말고 아무것도 안 하기 때문이다 — 여기서 외부 호출을
+      # 하면 이 숫자가 뒤집힌다. 근거: load/settlement/README.md
+      strategy: PESSIMISTIC
