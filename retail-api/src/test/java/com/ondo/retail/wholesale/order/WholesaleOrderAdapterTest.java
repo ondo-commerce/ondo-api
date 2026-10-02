@@ -127,7 +127,9 @@ class WholesaleOrderAdapterTest {
 
         assertThat(receipt.accepted()).isFalse();
         assertThat(receipt.reason()).isNotNull();
-        assertThat(receipt.message()).contains("장바구니");
+        // 도매가 아파서 못 받은 것이다. 우리 요청이 잘못된 게 아니라 다시 해볼 만하다 (MUL-139)
+        assertThat(receipt.retryable()).isTrue();
+        assertThat(receipt.message()).contains("다시 시도");
     }
 
     @Test
@@ -143,6 +145,8 @@ class WholesaleOrderAdapterTest {
 
         assertThat(receipt.accepted()).isFalse();
         assertThat(receipt.reason()).isEqualTo("UPSTREAM_ERROR");
+        // 502 도 5xx 다. 앞단이 대답했든 도매가 대답했든 다시 해볼 만하다
+        assertThat(receipt.retryable()).isTrue();
     }
 
     private static WholesaleOrderCommand 명령() {

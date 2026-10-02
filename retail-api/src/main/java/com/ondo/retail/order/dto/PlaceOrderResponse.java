@@ -35,6 +35,13 @@ public record PlaceOrderResponse(
      * @param amount           이 도매처 금액. 실패면 null
      * @param reason           실패 코드. 성공이면 null
      * @param message          화면에 그대로 쓸 문구
+     * @param isPending        서버가 대신 다시 보내는 중인지 (MUL-141).
+     *                         <p>{@code isAccepted=false} 인데 이 값이 true 면 <b>끝난 실패가
+     *                         아니다.</b> 도매가 잠깐 안 떠서 서버가 맡아 뒀다는 뜻이고,
+     *                         그 줄은 장바구니에서 빠져 있다. 기한 안에 못 넣으면 다시
+     *                         장바구니로 돌아온다.
+     *                         <p>필드를 더하기만 했다 — 프론트가 무시하면 지금과 똑같이
+     *                         동작한다. 화면 표시는 계약을 맞춘 뒤에 붙인다
      */
     @Schema(name = "PlaceOrderResult")
     public record Result(
@@ -45,6 +52,7 @@ public record PlaceOrderResponse(
             Integer orderNumber,
             Integer amount,
             String reason,
-            String message) {
+            String message,
+            boolean isPending) {
     }
 }

@@ -45,7 +45,15 @@ public enum ErrorCode {
     // 주문 접수가 도매처 전부에서 거절됐을 때 (MUL-98).
     // 계약이 "전부 안 되면 통합 주문을 안 만든다 — 그때는 502" 다.
     // 일부만 실패한 건 여기 안 온다. 그건 에러가 아니라 결과라 201 로 나간다.
-    UPSTREAM_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "지금 주문을 넣을 수 없어요. 장바구니는 그대로예요");
+    UPSTREAM_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "지금 주문을 넣을 수 없어요. 장바구니는 그대로예요"),
+
+    /**
+     * 대기 취소를 눌렀는데 이미 끝난 건이다 (MUL-141).
+     *
+     * <p>조용히 성공으로 두면 취소된 줄 알고 다른 도매에서 또 산다. 이미 접수됐을 수도
+     * 있으니 분명히 알려야 한다.
+     */
+    DISPATCH_NOT_PENDING(HttpStatus.CONFLICT, "이미 처리된 주문이에요. 주문 내역을 확인해주세요");
 
     private final HttpStatus status;
     private final String message;
