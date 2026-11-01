@@ -1,0 +1,96 @@
+# 레포 문서 목차.
+#
+# 문서는 경로가 아니라 ID 로 부른다. 경로가 바뀌면 여기 한 줄만 고친다.
+# 새 문서를 만들면 여기 등록한다. Doctor(예정)가 이 파일과 실제 파일이 맞는지 검사한다.
+#
+# layer — 에이전트에게 주는 맥락의 층
+#   project  레포 전체 규칙·구조. 거의 안 바뀐다
+#   domain   도메인 지식 — 유스케이스, 결정, 테스트 규칙, 측정 기록
+#   task     특정 작업의 스펙. 지라 티켓 하나에 대응한다
+#
+# kind — 문서의 성격
+#   rule     지켜야 하는 것 (CLAUDE.md, 테스트 가이드)
+#   guide    사람이 읽는 소개·설명
+#   record   측정·실험 결과. 끝난 일의 기록
+#   diagram  그림
+#   template 양식
+
+version: 1
+
+docs:
+  # ── project ─────────────────────────────────────────────
+  - id: project.claude
+    path: CLAUDE.md
+    title: 진입점 — 지도 · 규칙 · 명령어 · 지라 흐름
+    layer: project
+    kind: rule
+
+  - id: project.wholesale
+    path: wholesale-api/CLAUDE.md
+    title: 도매 API 고유 규칙 — 좌표 · 마이그레이션
+    layer: project
+    kind: rule
+
+  - id: project.retail
+    path: retail-api/CLAUDE.md
+    title: 소매 API 고유 규칙 — 좌표 · 마이그레이션
+    layer: project
+    kind: rule
+
+  - id: project.readme
+    path: README.md
+    title: 프로젝트 소개 — 문제 · 기능 · API · 막혔던 곳
+    layer: project
+    kind: guide
+
+  - id: project.pr-template
+    path: .github/PULL_REQUEST_TEMPLATE.md
+    title: PR 본문 양식
+    layer: project
+    kind: template
+
+  - id: project.architecture
+    path: docs/architecture.png
+    title: 아키텍처 그림 (원본 docs/architecture.drawio)
+    layer: project
+    kind: diagram
+
+  # ── domain ──────────────────────────────────────────────
+  - id: domain.testing
+    path: docs/testing.md
+    title: 테스트 가이드 — 종류 · 이름 · 픽스처 · DB
+    layer: domain
+    kind: rule
+
+  - id: domain.load.dashboard
+    path: load/dashboard/README.md
+    title: 대시보드 집계 성능 — 측정 기록
+    layer: domain
+    kind: record
+
+  - id: domain.load.order-retry
+    path: load/order-retry/README.md
+    title: 주문 접수 재시도 — 측정 기록
+    layer: domain
+    kind: record
+
+  - id: domain.load.order-retry.result
+    path: load/order-retry/results/policy-comparison.md
+    title: 재시도 정책 비교 — 측정 결과
+    layer: domain
+    kind: record
+
+  - id: domain.load.settlement
+    path: load/settlement/README.md
+    title: 미수 원장 쓰기 전략 — 측정 기록
+    layer: domain
+    kind: record
+
+  - id: domain.load.settlement.result
+    path: load/settlement/results/strategy-comparison.md
+    title: 미수 원장 쓰기 전략 비교 — 측정 결과
+    layer: domain
+    kind: record
+
+  # ── task ────────────────────────────────────────────────
+  # 아직 없다. 스펙 문서가 생기면 docs/specs/MUL-<번호>-*.md 로 두고 여기 등록한다.
