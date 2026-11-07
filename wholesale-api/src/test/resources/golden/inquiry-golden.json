@@ -1,0 +1,1979 @@
+{
+  "version": 7,
+  "aboutV7": "v7(since 7, loop-08i §5-3)는 미송 0일 때 출고 준비 중 주문 답 16개다(K01~K16, O07 뒤에 붙이기만 함). 포장 원본은 시나리오 칸 room.packings(거르지 않은 행, 없으면 빈 원본)이고 room.packingFailTimes 횟수만큼 원본이 던진다. 판정은 미송 가지의 앞 단계(다른 주문이에요, 칩, 배송어, 되묻기 계승)를 지나 미송 후보가 0이고 본문이 대상(색상, 사이즈, 숫자, 모르는 말)을 말하지 않았을 때만 원본을 부른다. 남기는 행은 도매처 = 방 도매처(null이면 뺌), 소매처 = 방 소매처, 취소 아님, 수량 > 0, READY + 봉투 없음 또는 PACKED + 봉투 출고 전뿐이고 주문으로 묶는다(orderId 오름차순). 1건 이상이면 AUTO_REPLY(intent BACKORDER, subject 넷 null, facts 셋 null) + HANDOFF(NO_BACKORDER, BACKORDER), 0건이나 원본 실패나 대상을 말한 질문은 HANDOFF NO_BACKORDER 하나. 본문은 1건 '출고 준비 중인 주문이 있어요(#7101)', 2건부터 '출고 준비 중인 주문 n건이 있어요(#7101, #7102)', 4건부터 앞 3개 번호 + ' 외 k건'. 기대값은 v4 줄 투영(`{lines}`)이고 포장 답 줄에만 facts: null 칸이 붙는다. K13만 projection decision이고 기대가 B04와 같다(열린 미송이 있으면 포장을 안 본다).",
+  "aboutV6": "v6(since 6, loop-08f §5-3)는 전부 꺼짐 때 의도 분류 7개다(O01~O07). 이유는 OFF 그대로, intent는 settings.enabled만 켜고(의도별 설정, 본문, 칩, 문맥, 이력은 그대로) 다시 판정한 intent다(조회 실패면 null). 줄은 OFF 넘김 하나뿐이다. U08 기대값은 그대로(켜짐에서도 HUMAN_REQUEST intent null), H15는 v1 투영(kind, reason)이라 intent 변화가 기대값에 안 보인다. 기대값은 v4 줄 투영(`{lines}`).",
+  "aboutV5": "v5(since 5, loop-08c §5-4)는 넘김 낱말 25개다: 협상 N01~N12, 사람 요청 HUMAN_REQUEST U01~U09, 낱말 경계 G01 X01~X03. 기대값은 v4 와 같은 줄 투영(`{lines}`)이다. 시나리오에 projection \"decision\" 이 있으면(G01) 그 시나리오만 v3 판정 투영이다 — B01 과 같은 판정임을 같은 모양으로 비교하려고. 판정 순서는 꺼짐 → 사람 요청 → 협상 → 입금 알림 이하 그대로.",
+  "about": "재고, 미송, 미수 문의 자동 답 골든셋(loop-05b §5-4, loop-06 §5-4 6, loop-07 §5-4 5).목 unit(packages/api src/mocks/chat/inquiry.test.ts)과 BE 테스트가 같은 파일을 읽는다. 필수 5(P1~P5)는 모든 단계가 정확히 일치해야 한다. v4(since 4 인 시나리오)의 expect 는 판정이 아니라 **방에 들어간 줄** 투영이다: {lines: [...]} 이고 열린 넘김과 이유가 같은 넘김 줄은 빠진다(줄 0 = lines []). 미수 AUTO_REPLY 줄은 kind intent outstanding prepaid overdue{count amount maxDaysOverdue} body checkedAt(asOf = 그 행의 asOf, now = 그 단계 시각). HANDOFF 줄은 kind reason intent sourceSequence(self = 그 단계 소매 메시지). 재고 CLARIFY 줄은 kind intent choices. step.sender WHOLESALER 는 사장이 직접 쓴 글이고 expect 는 {openHandoff}. room.receivableFailTimes 는 미수 원본 조회가 그 횟수만큼 던진다(LOOKUP_FAILED). receivables 표는 도매처 × 소매처 정산 요약 원본 한 줄이고(balance 플러스 = 갚을 돈) 판정에는 거르지 않은 채 전부 넘긴다. source 가 settlement.ts seed, extraReceivables.ts 인 행은 목 시드와 같아야 한다(asOf 제외). receivableAnomalies 는 toReceivableFacts 이상값 표다(\"NaN\" 글자는 NaN). 아래 aboutV3 은 v3 설명 그대로다.",
+  "aboutV3": "필수 4(P1~P4)는 모든 단계가 정확히 일치해야 한다. expect 는 판정 투영이다. 재고: AUTO_REPLY 는 kind intent target band orderable orderLimit qtyNote, CLARIFY 는 kind intent choices(variantId 순서까지). 재고 0 은 kinds [AUTO_REPLY, HANDOFF]. 미송: AUTO_REPLY 는 kind intent target(backorderId) remainingQty(facts.backorder.qty) eta{date: D±n | null, state: FUTURE TODAY NONE PAST(본문 문장으로 읽는다)} reason checkedAt(now = 그 단계 시각), 입고일 미정, 지남은 kinds [AUTO_REPLY, HANDOFF]. CLARIFY 는 kind intent choices[{kind, backorderId}](순서까지, 끝은 NOT_LISTED) labels(칩 글자). HANDOFF 는 kind reason. reason 은 골든셋 안 표시이고 API 칸이 아니다. 시각: 첫 단계는 rules.t0 + room.afterDays 일. room.context.ageMinutes 는 첫 단계 시각 기준 문맥 나이, step.afterMinutes 는 앞 단계 뒤 흐른 시간, step.enter 는 그 단계 직전 createChatRoom(listingId) 재진입. today 는 그 단계 시각의 서울 날짜. 날짜 D±n 은 rules.t0 의 서울 날짜(D+0) 기준이다. room.retailerId 가 없으면 1. room.intents 는 의도별 자동 답 설정(없으면 전부 켜짐). inquiry 의 빠진 칸(backorderId, label)은 null, notListed 는 없으면 칸을 안 싣는다. backorders 표는 도매 미송 목 시드(backorder.ts)와 같아야 하고 판정에는 거르지 않은 채 전부 넘긴다(이 방 도매처, 이 소매처 것만 고르는 건 판정이 한다).",
+  "rules": {
+    "contextMinutes": 30,
+    "bands": [0, 10, 50],
+    "orderLimitZero": "한도 없음. 답의 orderLimit 은 null",
+    "bandNames": ["NONE", "UNDER_10", "UNDER_50", "FIFTY_PLUS"],
+    "t0": "2026-10-29T14:20:00+09:00",
+    "today": "D+0",
+    "backorderChoiceMax": 8
+  },
+  "normalization": [
+    {
+      "rule": "공백 접기, 앞뒤 공백 제거",
+      "example": "\"몇 장\"/\"몇장\", \"레드 M\"/\"레드M\", \"10 장\"/\"10장\"",
+      "result": "같은 판정",
+      "cases": [
+        {"text": "  몇 장 남았어요  ", "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "몇장 남았어요", "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "레드 M 몇 장", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}},
+        {"text": "레드M 몇 장", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}},
+        {"text": "레드 M 10 장 되나요", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": true}},
+        {"text": "레드 M 10장 되나요", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": true}}
+      ]
+    },
+    {
+      "rule": "문장부호, 이모지 제거",
+      "example": "\"남았어요??\", \"레드/M!\"",
+      "result": "같은 판정",
+      "cases": [
+        {"text": "남았어요??", "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "레드/M! 몇 장요", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}},
+        {"text": "레드 M 남았어요 🙏", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "rule": "사이즈 대문자",
+      "example": "\"레드 m\"",
+      "result": "3002",
+      "cases": [
+        {"text": "레드 m 몇 장", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "rule": "오타 사전(목록에 있는 것만)",
+      "example": "\"남앗\", \"잇어요\", \"몇쟝\"",
+      "result": "남았, 있어요, 몇 장",
+      "cases": [
+        {"text": "레드 M 남앗어요", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}},
+        {"text": "레드 M 잇어요", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}},
+        {"text": "레드 M 몇쟝", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "rule": "색상 별칭은 안 받음",
+      "example": "\"빨강 M\"",
+      "result": "옵션 불명 → CLARIFY(직전 유효 되묻기 있으면 HANDOFF)",
+      "cases": [
+        {"text": "빨강 M 몇 장 남았어요?", "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "빨강 M 몇 장 남았어요?", "afterClarify": true, "expect": {"kind": "HANDOFF", "reason": "CLARIFY_AGAIN"}}
+      ]
+    },
+    {
+      "rule": "수량",
+      "example": "\"10장\", \"열 장\"",
+      "result": "숫자만 수량 한 줄. 한글 수사는 수량 없음",
+      "cases": [
+        {"text": "레드 M 10장 되나요", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": true}},
+        {"text": "레드 M 열 장 되나요", "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    }
+  ],
+  "stock": [
+    {"listingId": 2001, "wholesalerId": 101, "listingTitle": "빈티지 플라워 셔츠", "listingPublished": true, "variantId": 3001, "color": "레드", "size": "S", "availableQty": 40, "orderLimit": 500, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2001, "wholesalerId": 101, "listingTitle": "빈티지 플라워 셔츠", "listingPublished": true, "variantId": 3002, "color": "레드", "size": "M", "availableQty": 35, "orderLimit": 500, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2001, "wholesalerId": 101, "listingTitle": "빈티지 플라워 셔츠", "listingPublished": true, "variantId": 3003, "color": "레드", "size": "L", "availableQty": -15, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2001, "wholesalerId": 101, "listingTitle": "빈티지 플라워 셔츠", "listingPublished": true, "variantId": 3004, "color": "네이비", "size": "S", "availableQty": 20, "orderLimit": 500, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2001, "wholesalerId": 101, "listingTitle": "빈티지 플라워 셔츠", "listingPublished": true, "variantId": 3005, "color": "네이비", "size": "M", "availableQty": 18, "orderLimit": 500, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2002, "wholesalerId": 101, "listingTitle": "루즈핏 니트 가디건", "listingPublished": true, "variantId": 3006, "color": "블랙", "size": "FREE", "availableQty": 12, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2002, "wholesalerId": 101, "listingTitle": "루즈핏 니트 가디건", "listingPublished": true, "variantId": 3007, "color": "베이지", "size": "FREE", "availableQty": 8, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2003, "wholesalerId": 101, "listingTitle": "와이드 데님 팬츠", "listingPublished": true, "variantId": 3008, "color": "네이비", "size": "S", "availableQty": 15, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2003, "wholesalerId": 101, "listingTitle": "와이드 데님 팬츠", "listingPublished": true, "variantId": 3009, "color": "네이비", "size": "M", "availableQty": 22, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2003, "wholesalerId": 101, "listingTitle": "와이드 데님 팬츠", "listingPublished": true, "variantId": 3010, "color": "네이비", "size": "L", "availableQty": 9, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2003, "wholesalerId": 101, "listingTitle": "와이드 데님 팬츠", "listingPublished": true, "variantId": 3011, "color": "소라", "size": "M", "availableQty": 5, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2004, "wholesalerId": 102, "listingTitle": "코튼 반팔 티셔츠", "listingPublished": true, "variantId": 3012, "color": "화이트", "size": "S", "availableQty": 50, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2004, "wholesalerId": 102, "listingTitle": "코튼 반팔 티셔츠", "listingPublished": true, "variantId": 3013, "color": "화이트", "size": "M", "availableQty": 60, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2004, "wholesalerId": 102, "listingTitle": "코튼 반팔 티셔츠", "listingPublished": true, "variantId": 3014, "color": "화이트", "size": "L", "availableQty": 45, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2004, "wholesalerId": 102, "listingTitle": "코튼 반팔 티셔츠", "listingPublished": true, "variantId": 3015, "color": "화이트", "size": "XL", "availableQty": 10, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2004, "wholesalerId": 102, "listingTitle": "코튼 반팔 티셔츠", "listingPublished": true, "variantId": 3016, "color": "블랙", "size": "M", "availableQty": 30, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2004, "wholesalerId": 102, "listingTitle": "코튼 반팔 티셔츠", "listingPublished": true, "variantId": 3017, "color": "블랙", "size": "L", "availableQty": 25, "orderLimit": 0, "variantPublished": true, "source": "product.ts seed"},
+    {"listingId": 2901, "wholesalerId": 101, "listingTitle": "무지 캔버스 에코백", "listingPublished": true, "variantId": 3901, "color": "블랙", "size": "FREE", "availableQty": 50, "orderLimit": 0, "variantPublished": true, "source": "chat mock extra"},
+    {"listingId": 2901, "wholesalerId": 101, "listingTitle": "무지 캔버스 에코백", "listingPublished": true, "variantId": 3902, "color": "화이트", "size": "FREE", "availableQty": 5, "orderLimit": 0, "variantPublished": false, "source": "chat mock extra"},
+    {"listingId": 2902, "wholesalerId": 101, "listingTitle": "샘플 반팔 티셔츠", "listingPublished": true, "variantId": 3903, "color": "그레이", "size": "M", "availableQty": 10, "orderLimit": 0, "variantPublished": false, "source": "chat mock extra"}
+  ],
+  "backorders": [
+    {"backorderId": 9001, "orderId": 7001, "wholesalerId": 101, "retailerId": 1, "variantId": 3003, "title": "빈티지 플라워 셔츠", "color": "레드", "size": "L", "qty": 4, "remainingQty": 4, "orderedAt": "2026-09-04T10:00:00+09:00", "expectedInboundDate": "D-3", "expectedInboundReason": "공장 재입고 예정", "status": "OPEN", "source": "backorder.ts seed"},
+    {"backorderId": 9002, "orderId": 7002, "wholesalerId": 101, "retailerId": 1, "variantId": 3011, "title": "와이드 데님 팬츠", "color": "소라", "size": "M", "qty": 1, "remainingQty": 1, "orderedAt": "2026-09-06T10:00:00+09:00", "expectedInboundDate": null, "expectedInboundReason": null, "status": "OPEN", "source": "backorder.ts seed"},
+    {"backorderId": 9003, "orderId": 7003, "wholesalerId": 101, "retailerId": 1, "variantId": 3019, "title": "린넨 셋업 자켓", "color": "베이지", "size": "L", "qty": 2, "remainingQty": 2, "orderedAt": "2026-09-07T08:00:00+09:00", "expectedInboundDate": "D+7", "expectedInboundReason": "원단 수급 지연", "status": "OPEN", "source": "backorder.ts seed"},
+    {"backorderId": 9005, "orderId": 7005, "wholesalerId": 101, "retailerId": 2, "variantId": 3003, "title": "빈티지 플라워 셔츠", "color": "레드", "size": "L", "qty": 9, "remainingQty": 9, "orderedAt": "2026-09-05T10:00:00+09:00", "expectedInboundDate": "D-3", "expectedInboundReason": "공장 재입고 예정", "status": "OPEN", "source": "backorder.ts seed"},
+    {"backorderId": 9004, "orderId": 7004, "wholesalerId": 101, "retailerId": 1, "variantId": 3002, "title": "빈티지 플라워 셔츠", "color": "레드", "size": "M", "qty": 1, "remainingQty": 0, "orderedAt": "2026-09-05T15:00:00+09:00", "expectedInboundDate": null, "expectedInboundReason": null, "status": "RESOLVED", "source": "backorder.ts seed"},
+    {"backorderId": 9006, "orderId": 7006, "wholesalerId": 101, "retailerId": 1, "variantId": 3003, "title": "빈티지 플라워 셔츠", "color": "레드", "size": "L", "qty": 4, "remainingQty": 2, "orderedAt": "2026-09-06T15:00:00+09:00", "expectedInboundDate": "D-3", "expectedInboundReason": "공장 재입고 예정", "status": "OPEN", "source": "backorder.ts seed"},
+    {"backorderId": 801, "orderId": 7801, "wholesalerId": 102, "retailerId": 1, "variantId": 3801, "title": "코튼 셔츠", "color": "블랙", "size": "L", "qty": 20, "remainingQty": 20, "orderedAt": "2026-10-24T11:00:00+09:00", "expectedInboundDate": "D+5", "expectedInboundReason": null, "status": "OPEN", "source": "backorder.ts seed"}
+  ],
+  "receivables": [
+    {"wholesalerId": 101, "retailerId": 1, "balance": 37500, "unpaid": 37500, "prepaid": 0, "overdue": {"amount": 37500, "count": 1, "maxDays": 54}, "exact": true, "asOf": "2026-10-29T14:19:00+09:00", "source": "settlement.ts seed", "note": "무드온 × 봄봄상회. 주문 7004, 9/4 출고 37,500원, 입금 0. T0 연체 = 10/29 − 9/4 − 외상 1일 = 54일 (장면 3)"},
+    {"wholesalerId": 102, "retailerId": 1, "balance": 52000, "unpaid": 52000, "prepaid": 0, "overdue": {"amount": 0, "count": 0, "maxDays": 0}, "exact": true, "asOf": "2026-10-29T14:19:00+09:00", "source": "extraReceivables.ts", "note": "라온 × 봄봄상회(방 33). 연체 없음"},
+    {"wholesalerId": 101, "retailerId": 2, "balance": 786000, "unpaid": 786000, "prepaid": 0, "overdue": {"amount": 120000, "count": 1, "maxDays": 3}, "exact": true, "asOf": "2026-10-29T14:19:00+09:00", "source": "golden only", "note": "중간발표 슬라이드 22~25장 예시 금액"},
+    {"wholesalerId": 101, "retailerId": 3, "balance": -30000, "unpaid": 0, "prepaid": 30000, "overdue": {"amount": 0, "count": 0, "maxDays": 0}, "exact": true, "asOf": "2026-10-29T14:19:00+09:00", "source": "golden only", "note": "선수금만"},
+    {"wholesalerId": 101, "retailerId": 4, "balance": 0, "unpaid": 0, "prepaid": 0, "overdue": {"amount": 0, "count": 0, "maxDays": 0}, "exact": true, "asOf": "2026-10-29T14:19:00+09:00", "source": "golden only", "note": "다 갚음"},
+    {"wholesalerId": 101, "retailerId": 5, "balance": 17500, "unpaid": 37500, "prepaid": 20000, "overdue": {"amount": 37500, "count": 1, "maxDays": 54}, "exact": true, "asOf": "2026-10-29T14:19:00+09:00", "source": "golden only", "note": "배분 안 된 입금 20,000원(Codex 1). 17,500원이라 답하면 틀릴 수 있다"},
+    {"wholesalerId": 101, "retailerId": 7, "balance": 37500, "unpaid": 37500, "prepaid": 0, "overdue": {"amount": 0, "count": 0, "maxDays": 0}, "exact": false, "asOf": "2026-10-29T14:19:00+09:00", "source": "golden only", "note": "나눠 출고(9/4, 9/10)라 배정이 어느 출고분을 갚았는지 모른다"}
+  ],
+  "receivableAnomalies": [
+    {"anomaly": "NOT_EXACT", "rule": "exact false", "row": {"balance": 37500, "unpaid": 37500, "prepaid": 0, "overdue": {"amount": 37500, "count": 1, "maxDays": 54}, "exact": false}},
+    {"anomaly": "NOT_INTEGER", "rule": "정수 아닌 값", "row": {"balance": 37500.5, "unpaid": 37500.5, "prepaid": 0, "overdue": {"amount": 0, "count": 0, "maxDays": 0}, "exact": true}},
+    {"anomaly": "NOT_INTEGER", "rule": "NaN", "row": {"balance": "NaN", "unpaid": 37500, "prepaid": 0, "overdue": {"amount": 0, "count": 0, "maxDays": 0}, "exact": true}},
+    {"anomaly": "NEGATIVE", "rule": "음수(balance 밖)", "row": {"balance": 38000, "unpaid": 37500, "prepaid": -500, "overdue": {"amount": 0, "count": 0, "maxDays": 0}, "exact": true}},
+    {"anomaly": "SIGN_MISMATCH", "rule": "unpaid − prepaid ≠ balance (부호 뒤집힘)", "row": {"balance": -37500, "unpaid": 37500, "prepaid": 0, "overdue": {"amount": 37500, "count": 1, "maxDays": 54}, "exact": true}},
+    {"anomaly": "MIXED_BALANCE", "rule": "unpaid > 0 이고 prepaid > 0 (미배분 입금)", "row": {"balance": 17500, "unpaid": 37500, "prepaid": 20000, "overdue": {"amount": 0, "count": 0, "maxDays": 0}, "exact": true}},
+    {"anomaly": "OVERDUE_COUNT_AMOUNT", "rule": "연체 건수와 금액 중 하나만 0", "row": {"balance": 37500, "unpaid": 37500, "prepaid": 0, "overdue": {"amount": 0, "count": 1, "maxDays": 54}, "exact": true}},
+    {"anomaly": "OVERDUE_DAYS", "rule": "연체 건수 > 0 인데 최대 일수 < 1", "row": {"balance": 37500, "unpaid": 37500, "prepaid": 0, "overdue": {"amount": 37500, "count": 1, "maxDays": 0}, "exact": true}},
+    {"anomaly": "OVERDUE_OVER_UNPAID", "rule": "연체 금액 > 갚을 돈", "row": {"balance": 37500, "unpaid": 37500, "prepaid": 0, "overdue": {"amount": 40000, "count": 1, "maxDays": 54}, "exact": true}}
+  ],
+  "scenarios": [
+    {
+      "id": "P1",
+      "title": "자유 문장 → 되묻기 → 옵션 칩 → 답 (시연 장면 2, 3)",
+      "required": true,
+      "group": "required",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "이 셔츠 몇 장 남았어요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "레드 / M", "inquiry": {"intent": "STOCK", "listingId": 2001, "variantId": 3002}, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "P2",
+      "title": "재고 문의 칩 → 되묻기 → \"레드 M이요\"(계승) → 답",
+      "required": true,
+      "group": "required",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "이 상품 몇 장 남았어요?", "inquiry": {"intent": "STOCK", "listingId": 2001, "variantId": null}, "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "레드 M이요", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "P3",
+      "title": "문장 속 옵션과 수량 → 답 + 수량 한 줄 → 협상 → 넘김",
+      "required": true,
+      "group": "required",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 M 10장 되나요", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": true}},
+        {"text": "10장이면 좀 깎아 주세요", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NEGOTIATION"}}
+      ]
+    },
+    {
+      "id": "P4",
+      "title": "자유 문장 \"지난주 주문한 거 언제 와요?\" → 미송 되묻기 4개 → 칩 9003 → 남은 2장 입고 예정 (시연 장면 2)",
+      "required": true,
+      "group": "required",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "지난주 주문한 거 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "inquiry": {"intent": "BACKORDER", "listingId": null, "variantId": 3019, "backorderId": 9003}, "expect": {"kind": "AUTO_REPLY", "intent": "BACKORDER", "target": 9003, "remainingQty": 2, "eta": {"date": "D+7", "state": "FUTURE"}, "reason": "원단 수급 지연", "checkedAt": "now"}}
+      ]
+    },
+    {
+      "id": "S01",
+      "title": "문장 속 옵션 바로 답 (레드 S)",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 S 몇 장 남았어요?", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3001, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S02",
+      "title": "문장 속 옵션 바로 답 (네이비 M, 재고+있나요)",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "네이비 M 재고 있나요?", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3005, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S03",
+      "title": "문장 속 옵션 바로 답 (네이비 S, 수량)",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "네이비 S 수량 알려주세요", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3004, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S04",
+      "title": "문장 속 옵션 바로 답 (있어요 + 옵션어)",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 M 있어요?", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S05",
+      "title": "정규화: 붙여 쓰기, 물음표 둘",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드M 몇장 남았어요??", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S06",
+      "title": "정규화: 소문자 사이즈, 오타 남앗",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 m 몇 장 남앗어요", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S07",
+      "title": "정규화: 오타 잇어요, 이모지",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "네이비 S 잇어요?! 🙏", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3004, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S08",
+      "title": "정규화: 오타 몇쟝",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 S 몇쟝 남았나요", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3001, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S09",
+      "title": "재고 0 (판매가능 −15): 문장 → 없음 + 넘김",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 L 몇 장 있어요", "inquiry": null, "expect": {"kinds": ["AUTO_REPLY", "HANDOFF"], "intent": "STOCK", "target": 3003, "band": "NONE", "orderable": true, "orderLimit": null, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S10",
+      "title": "재고 0: 칩 → 되묻기 → 칩 레드 / L → 없음 + 넘김",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "이 상품 몇 장 남았어요?", "inquiry": {"intent": "STOCK", "listingId": 2001, "variantId": null}, "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "레드 / L", "inquiry": {"intent": "STOCK", "listingId": 2001, "variantId": 3003}, "expect": {"kinds": ["AUTO_REPLY", "HANDOFF"], "intent": "STOCK", "target": 3003, "band": "NONE", "orderable": true, "orderLimit": null, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S11",
+      "title": "게시 옵션 1개 상품: 되묻지 않고 답",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2901,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "이 가방 몇 장 남았어요?", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3901, "band": "FIFTY_PLUS", "orderable": true, "orderLimit": null, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S12",
+      "title": "답 받은 뒤 같은 상품 재문의 → 새 되묻기",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "몇 장 남았어요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "레드 / M", "inquiry": {"intent": "STOCK", "listingId": 2001, "variantId": 3002}, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3002, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}},
+        {"text": "이 셔츠 재고 있어요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}}
+      ]
+    },
+    {
+      "id": "S13",
+      "title": "경계: 판매가능 8 → 1~9장, 한도 없음",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2002,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "베이지 몇 장 남았어요?", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3007, "band": "UNDER_10", "orderable": true, "orderLimit": null, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S14",
+      "title": "경계: 판매가능 12 → 10~49장",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2002,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "블랙 재고 있나요", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3006, "band": "UNDER_50", "orderable": true, "orderLimit": null, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S15",
+      "title": "경계: 판매가능 50 → 50장 이상(칩)",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2901,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "블랙 / FREE", "inquiry": {"intent": "STOCK", "listingId": 2901, "variantId": 3901}, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3901, "band": "FIFTY_PLUS", "orderable": true, "orderLimit": null, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S16",
+      "title": "되묻기 뒤 다른 옵션어(레드 대신 네이비 M)",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "이 셔츠 몇 장 남았어요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "네이비 M은요?", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3005, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "S17",
+      "title": "지난 문맥(40분) → 상품에서 다시 들어옴 → 문맥 갱신 → 답",
+      "required": false,
+      "group": "stock",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 40
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 S 몇 장 남았어요?", "inquiry": null, "enter": {"listingId": 2001}, "expect": {"kind": "AUTO_REPLY", "intent": "STOCK", "target": 3001, "band": "UNDER_50", "orderable": true, "orderLimit": 500, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "H01",
+      "title": "협상어: 할인",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 M 할인 되나요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NEGOTIATION"}}
+      ]
+    },
+    {
+      "id": "H02",
+      "title": "협상어: 네고",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "50장 사면 네고 가능해요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NEGOTIATION"}}
+      ]
+    },
+    {
+      "id": "H03",
+      "title": "협상어: 교환",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 M 교환 되나요", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NEGOTIATION"}}
+      ]
+    },
+    {
+      "id": "H04",
+      "title": "협상어: 반품",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "지난번 거 반품하고 싶어요", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NEGOTIATION"}}
+      ]
+    },
+    {
+      "id": "H05",
+      "title": "칩(inquiry 3002) + 협상 본문 → 넘김",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "깎아 주세요", "inquiry": {"intent": "STOCK", "listingId": 2001, "variantId": 3002}, "expect": {"kind": "HANDOFF", "reason": "NEGOTIATION"}}
+      ]
+    },
+    {
+      "id": "H06",
+      "title": "의도 둘: 재고 + 미송",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 M 재고랑 미송 언제 와요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "MULTI_INTENT"}}
+      ]
+    },
+    {
+      "id": "H07",
+      "title": "의도 둘: 재고 + 미수",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "재고 몇 장인지랑 제 미수 얼마예요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "MULTI_INTENT"}}
+      ]
+    },
+    {
+      "id": "H08",
+      "title": "남의 도매처(102) 상품 variant를 방 1(101)에서",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "화이트 / S", "inquiry": {"intent": "STOCK", "listingId": 2004, "variantId": 3012}, "expect": {"kind": "HANDOFF", "reason": "INVALID_TARGET"}}
+      ]
+    },
+    {
+      "id": "H09",
+      "title": "게시 안 된 옵션 지정",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2901,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "화이트 / FREE", "inquiry": {"intent": "STOCK", "listingId": 2901, "variantId": 3902}, "expect": {"kind": "HANDOFF", "reason": "INVALID_TARGET"}}
+      ]
+    },
+    {
+      "id": "H10",
+      "title": "게시 옵션 0개 상품",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2902,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "몇 장 남았어요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NO_OPTIONS"}}
+      ]
+    },
+    {
+      "id": "H11",
+      "title": "되묻기 뒤 딴소리(배송)",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "이 셔츠 몇 장 남았어요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "배송은 언제 돼요", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NO_INTENT"}}
+      ]
+    },
+    {
+      "id": "H12",
+      "title": "되묻기 뒤 색상 별칭(빨강) → 두 번째 되묻기 없이 넘김",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "이 셔츠 몇 장 남았어요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "빨강 M 몇 장 있어요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "CLARIFY_AGAIN"}}
+      ]
+    },
+    {
+      "id": "H13",
+      "title": "되묻기 31분 뒤 \"레드 M\" → 계승 안 함 → 넘김",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "이 셔츠 몇 장 남았어요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "레드 M", "inquiry": null, "afterMinutes": 31, "expect": {"kind": "HANDOFF", "reason": "NO_INTENT"}}
+      ]
+    },
+    {
+      "id": "H14",
+      "title": "상품 문맥 없음(도매처 홈에서 연 방)",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "몇 장 남았어요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NO_CONTEXT"}}
+      ]
+    },
+    {
+      "id": "H15",
+      "title": "자동 답 꺼짐",
+      "required": false,
+      "group": "handoff",
+      "room": {
+        "wholesalerId": 101,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": false
+      },
+      "steps": [
+        {"text": "레드 M 몇 장 있어요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "OFF"}}
+      ]
+    },
+    {
+      "id": "B01",
+      "title": "색상 + 사이즈가 같은 미송 둘(9001, 9006) → 둘 다 되묻기",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 L 미송 언제 와요", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "다른 주문이에요"]}}
+      ]
+    },
+    {
+      "id": "B02",
+      "title": "상품명만(데님 팬츠) → 후보 1개여도 칩 1개로 되묻기(Codex 1)",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "데님 팬츠 언제 와요", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9002}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "다른 주문이에요"]}}
+      ]
+    },
+    {
+      "id": "B03",
+      "title": "칩 9001 → 등록된 입고 예정일 지남 + 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "inquiry": {"intent": "BACKORDER", "listingId": null, "variantId": 3003, "backorderId": 9001}, "expect": {"kinds": ["AUTO_REPLY", "HANDOFF"], "intent": "BACKORDER", "target": 9001, "remainingQty": 4, "eta": {"date": "D-3", "state": "PAST"}, "reason": "공장 재입고 예정", "checkedAt": "now"}}
+      ]
+    },
+    {
+      "id": "B04",
+      "title": "대기상회 방: 후보 1개(9005) + \"미송 언제 와요\" → 칩 1개 되묻기",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 2,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9005}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 9장, 9/5 주문 #7005", "다른 주문이에요"]}}
+      ]
+    },
+    {
+      "id": "B05",
+      "title": "기다리는 미송이 없는 소매처(가람상회) → 넘김(Q1 ②)",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 3,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NO_BACKORDER"}}
+      ]
+    },
+    {
+      "id": "B06",
+      "title": "남의 도매처(102) 미송 801 을 방 1(101)에서 칩으로 → 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "코튼 셔츠 블랙/L, 남은 20장, 10/24 주문 #7801", "inquiry": {"intent": "BACKORDER", "listingId": null, "variantId": 3801, "backorderId": 801}, "expect": {"kind": "HANDOFF", "reason": "INVALID_TARGET"}}
+      ]
+    },
+    {
+      "id": "B07",
+      "title": "다른 소매처(대기상회) 미송 9005 를 칩으로 → 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "빈티지 플라워 셔츠 레드/L, 남은 9장, 9/5 주문 #7005", "inquiry": {"intent": "BACKORDER", "listingId": null, "variantId": 3003, "backorderId": 9005}, "expect": {"kind": "HANDOFF", "reason": "INVALID_TARGET"}}
+      ]
+    },
+    {
+      "id": "B08",
+      "title": "해소된 미송 9004 를 칩으로 → 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "빈티지 플라워 셔츠 레드/M, 남은 1장, 9/5 주문 #7004", "inquiry": {"intent": "BACKORDER", "listingId": null, "variantId": 3002, "backorderId": 9004}, "expect": {"kind": "HANDOFF", "reason": "INVALID_TARGET"}}
+      ]
+    },
+    {
+      "id": "B09",
+      "title": "되묻기 뒤 색상만(\"베이지요\") → 확정 아님 → 두 번 묻지 않고 넘김(M1)",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "베이지요", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "CLARIFY_AGAIN"}}
+      ]
+    },
+    {
+      "id": "B10",
+      "title": "되묻기 뒤 \"아까 그거요\" → 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "아까 그거요", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "CLARIFY_AGAIN"}}
+      ]
+    },
+    {
+      "id": "B11",
+      "title": "되묻기 31분 뒤 \"베이지 L이요\" → 계승 안 함 → 의도 없음",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "베이지 L이요", "inquiry": null, "afterMinutes": 31, "expect": {"kind": "HANDOFF", "reason": "NO_INTENT"}}
+      ]
+    },
+    {
+      "id": "B12",
+      "title": "`다른 주문이에요` 보기(notListed) → 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "다른 주문이에요", "inquiry": {"intent": "BACKORDER", "listingId": null, "variantId": 0, "backorderId": null, "notListed": true}, "expect": {"kind": "HANDOFF", "reason": "NOT_LISTED"}}
+      ]
+    },
+    {
+      "id": "B13",
+      "title": "재고 되묻기가 열린 채 미송 질문 → 재고 계승 안 하고 미송 되묻기(C1)",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "이 셔츠 몇 장 남았어요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}},
+        {"text": "레드 L 미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "다른 주문이에요"]}}
+      ]
+    },
+    {
+      "id": "B14",
+      "title": "미송 자동 답만 꺼짐 → 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true,
+        "intents": {
+          "STOCK": true,
+          "BACKORDER": false,
+          "RECEIVABLE": true
+        }
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "OFF"}}
+      ]
+    },
+    {
+      "id": "B15",
+      "title": "미송 질문 + 협상어(환불) → 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요? 늦으면 환불해 주세요", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NEGOTIATION"}}
+      ]
+    },
+    {
+      "id": "B16",
+      "title": "되묻기 뒤 색상 + 사이즈(\"베이지 L이요\") → 보기 안에서 확정 → 9003",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "베이지 L이요", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "BACKORDER", "target": 9003, "remainingQty": 2, "eta": {"date": "D+7", "state": "FUTURE"}, "reason": "원단 수급 지연", "checkedAt": "now"}}
+      ]
+    },
+    {
+      "id": "B17",
+      "title": "\"블랙 셔츠\"인데 이 방 셔츠 미송은 레드뿐 → 넘김(충돌)",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "블랙 셔츠 미송 언제 와요", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NO_MATCH"}}
+      ]
+    },
+    {
+      "id": "B18",
+      "title": "상품(린넨 자켓)과 옵션(레드 L) 충돌 → 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "린넨 자켓 레드 L 언제 와요", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NO_MATCH"}}
+      ]
+    },
+    {
+      "id": "B19",
+      "title": "B01 되묻기 뒤 보기 밖 칩 9002 → 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "레드 L 미송 언제 와요", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "다른 주문이에요"]}},
+        {"text": "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "inquiry": {"intent": "BACKORDER", "listingId": null, "variantId": 3011, "backorderId": 9002}, "expect": {"kind": "HANDOFF", "reason": "INVALID_TARGET"}}
+      ]
+    },
+    {
+      "id": "B20",
+      "title": "미송 되묻기가 열린 채 재고 질문 → 미송 계승 안 하고 재고 판정",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": {
+          "listingId": 2001,
+          "ageMinutes": 2
+        },
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "레드 L 재고 있어요?", "inquiry": null, "expect": {"kinds": ["AUTO_REPLY", "HANDOFF"], "intent": "STOCK", "target": 3003, "band": "NONE", "orderable": true, "orderLimit": null, "qtyNote": false}}
+      ]
+    },
+    {
+      "id": "B21",
+      "title": "칩 9006 → 남은 2장(원래 4장 아님) + 지남 넘김",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9002}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "BACKORDER", "backorderId": 9003}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "와이드 데님 팬츠 소라/M, 남은 1장, 9/6 주문 #7002", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "린넨 셋업 자켓 베이지/L, 남은 2장, 9/7 주문 #7003", "다른 주문이에요"]}},
+        {"text": "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "inquiry": {"intent": "BACKORDER", "listingId": null, "variantId": 3003, "backorderId": 9006}, "expect": {"kinds": ["AUTO_REPLY", "HANDOFF"], "intent": "BACKORDER", "target": 9006, "remainingQty": 2, "eta": {"date": "D-3", "state": "PAST"}, "reason": "공장 재입고 예정", "checkedAt": "now"}}
+      ]
+    },
+    {
+      "id": "B22",
+      "title": "7일 뒤(오늘 = 3019 입고일) 문장으로 확정 → \"오늘\" 도매 입고 예정",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true,
+        "afterDays": 7
+      },
+      "steps": [
+        {"text": "린넨 셋업 자켓 베이지 L 미송 언제 와요?", "inquiry": null, "expect": {"kind": "AUTO_REPLY", "intent": "BACKORDER", "target": 9003, "remainingQty": 2, "eta": {"date": "D+7", "state": "TODAY"}, "reason": "원단 수급 지연", "checkedAt": "now"}}
+      ]
+    },
+    {
+      "id": "B23",
+      "title": "미송 의도 + 배송어(택배) → 넘김(출고, 수령은 다른 단계)",
+      "required": false,
+      "group": "backorder",
+      "room": {
+        "wholesalerId": 101,
+        "retailerId": 1,
+        "context": null,
+        "autoReply": true
+      },
+      "steps": [
+        {"text": "택배 언제 와요?", "inquiry": null, "expect": {"kind": "HANDOFF", "reason": "NOT_SUPPORTED"}}
+      ]
+    },
+    {
+      "id": "P5",
+      "title": "\"지금 미수 얼마예요?\" → 갚을 돈 37,500원, 기한 지난 것 1건 → \"조금 깎아 주세요\" → 넘김 → 다시 물으면 금액은 그대로 나간다 (시연 장면 3)",
+      "required": true,
+      "group": "required",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "지금 미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "RECEIVABLE", "outstanding": 37500, "prepaid": 0, "overdue": {"count": 1, "amount": 37500, "maxDaysOverdue": 54}, "body": "갚을 돈은 37,500원이에요. 그중 기한 지난 것 1건, 37,500원이에요", "checkedAt": "asOf"}]}},
+        {"text": "조금 깎아 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}},
+        {"text": "지금 미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "RECEIVABLE", "outstanding": 37500, "prepaid": 0, "overdue": {"count": 1, "amount": 37500, "maxDaysOverdue": 54}, "body": "갚을 돈은 37,500원이에요. 그중 기한 지난 것 1건, 37,500원이에요", "checkedAt": "asOf"}]}}
+      ]
+    },
+    {
+      "id": "R01",
+      "title": "다 갚은 소매처(101, 4) → C 지금 갚을 돈은 없어요",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 4, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "RECEIVABLE", "outstanding": 0, "prepaid": 0, "overdue": {"count": 0, "amount": 0, "maxDaysOverdue": 0}, "body": "지금 갚을 돈은 없어요", "checkedAt": "asOf"}]}}
+      ]
+    },
+    {
+      "id": "R02",
+      "title": "선수금만 있는 소매처(101, 3) → D 선수금 30,000원",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "외상 얼마 있어요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "RECEIVABLE", "outstanding": 0, "prepaid": 30000, "overdue": {"count": 0, "amount": 0, "maxDaysOverdue": 0}, "body": "지금 갚을 돈은 없어요. 미리 낸 돈(선수금) 30,000원이 남아 있어요", "checkedAt": "asOf"}]}}
+      ]
+    },
+    {
+      "id": "R03",
+      "title": "슬라이드 예시(101, 2) → B 786,000원, 기한 지난 것 1건 120,000원",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 2, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "제 미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "RECEIVABLE", "outstanding": 786000, "prepaid": 0, "overdue": {"count": 1, "amount": 120000, "maxDaysOverdue": 3}, "body": "갚을 돈은 786,000원이에요. 그중 기한 지난 것 1건, 120,000원이에요", "checkedAt": "asOf"}]}}
+      ]
+    },
+    {
+      "id": "R04",
+      "title": "방 33(라온 102 × 봄봄상회) → A 52,000원, 기한 지난 것 없음. 무드온 몫 37,500원이 섞이지 않는다",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 102, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "지금 미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "RECEIVABLE", "outstanding": 52000, "prepaid": 0, "overdue": {"count": 0, "amount": 0, "maxDaysOverdue": 0}, "body": "갚을 돈은 52,000원이에요. 기한 지난 것은 없어요", "checkedAt": "asOf"}]}}
+      ]
+    },
+    {
+      "id": "R05",
+      "title": "배분 안 된 입금(101, 5) → 금액 답 없이 넘김",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 5, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "AMOUNT_UNSURE", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "R06",
+      "title": "정산 줄 없는 소매처(101, 6) → \"없어요\"가 아니라 넘김",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 6, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NO_RELATION", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "R07",
+      "title": "나눠 출고(exact false, 101, 7) → 넘김",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 7, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "AMOUNT_UNSURE", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "R08",
+      "title": "\"잔액 얼마예요\" → 선수금 잔액으로도 읽혀 금액 없이 넘김(D41, Codex C4. 전에는 B)",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "잔액 얼마예요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "AMOUNT_UNSURE", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "R09",
+      "title": "상품 문맥 + \"이 셔츠 얼마예요?\" → 값 문의라 미수가 아니다(의도 없음 넘김)",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": {"listingId": 2001, "ageMinutes": 2}, "autoReply": true},
+      "steps": [
+        {"text": "이 셔츠 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NO_INTENT", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "R10",
+      "title": "상품 문맥 + \"이 셔츠 얼마 남았어요?\" → 재고 판정 그대로(미수 답 0)",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": {"listingId": 2001, "ageMinutes": 2}, "autoReply": true},
+      "steps": [
+        {"text": "이 셔츠 얼마 남았어요?", "inquiry": null, "expect": {"lines": [{"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}]}}
+      ]
+    },
+    {
+      "id": "R11",
+      "title": "\"미수 얼마나 남았어요?\" → 재고 낱말과 겹쳐 의도 둘 넘김",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "미수 얼마나 남았어요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "MULTI_INTENT", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "R12",
+      "title": "\"이번 달 미수 얼마예요?\" → 기간 넘김",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "이번 달 미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "PERIOD", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "R13",
+      "title": "\"지난달 외상 얼마예요\" → 기간 넘김",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "지난달 외상 얼마예요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "PERIOD", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "R14",
+      "title": "재고 되묻기가 열린 채 \"미수 얼마예요\" → 계승하지 않고 미수 답",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": {"listingId": 2001, "ageMinutes": 2}, "autoReply": true},
+      "steps": [
+        {"text": "이 셔츠 몇 장 남았어요?", "inquiry": null, "expect": {"lines": [{"kind": "CLARIFY", "intent": "STOCK", "choices": [3001, 3002, 3003, 3004, 3005]}]}},
+        {"text": "미수 얼마예요", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "RECEIVABLE", "outstanding": 37500, "prepaid": 0, "overdue": {"count": 1, "amount": 37500, "maxDaysOverdue": 54}, "body": "갚을 돈은 37,500원이에요. 그중 기한 지난 것 1건, 37,500원이에요", "checkedAt": "asOf"}]}}
+      ]
+    },
+    {
+      "id": "R15",
+      "title": "미수 자동 답만 꺼짐 → OFF 넘김",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true, "intents": {"STOCK": true, "BACKORDER": true, "RECEIVABLE": false}},
+      "steps": [
+        {"text": "미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "OFF", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "R16",
+      "title": "정산 조회 실패 1회 → LOOKUP_FAILED 넘김, 다음 질문은 정상 답",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true, "receivableFailTimes": 1},
+      "steps": [
+        {"text": "미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "LOOKUP_FAILED", "intent": "RECEIVABLE", "sourceSequence": "self"}]}},
+        {"text": "미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "RECEIVABLE", "outstanding": 37500, "prepaid": 0, "overdue": {"count": 1, "amount": 37500, "maxDaysOverdue": 54}, "body": "갚을 돈은 37,500원이에요. 그중 기한 지난 것 1건, 37,500원이에요", "checkedAt": "asOf"}]}}
+      ]
+    },
+    {
+      "id": "R17",
+      "title": "\"사장님, 제 미수 얼마예요?\" → B",
+      "required": false,
+      "group": "receivable",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "사장님, 제 미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "RECEIVABLE", "outstanding": 37500, "prepaid": 0, "overdue": {"count": 1, "amount": 37500, "maxDaysOverdue": 54}, "body": "갚을 돈은 37,500원이에요. 그중 기한 지난 것 1건, 37,500원이에요", "checkedAt": "asOf"}]}}
+      ]
+    },
+    {
+      "id": "H16",
+      "title": "\"방금 입금했어요\" → 입금 알림 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "방금 입금했어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "PAYMENT_REPORT", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "H17",
+      "title": "\"입금했는데 미수 얼마예요?\" → 입금 등록 전 잔액을 말하지 않는다",
+      "required": false,
+      "group": "handoff",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "입금했는데 미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "PAYMENT_REPORT", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "H18",
+      "title": "\"미수랑 미송 같이 알려 주세요\" → 의도 둘",
+      "required": false,
+      "group": "handoff",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "미수랑 미송 같이 알려 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "MULTI_INTENT", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "H19",
+      "title": "\"미수 얼마예요? 좀 깎아 주세요\" → 협상 넘김(금액 답 없음)",
+      "required": false,
+      "group": "handoff",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "미수 얼마예요? 좀 깎아 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "H20",
+      "title": "협상 넘김이 열린 채 \"방금 입금했어요\" → 이유가 달라 새 넘김 줄",
+      "required": false,
+      "group": "handoff",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "조금 깎아 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}},
+        {"text": "방금 입금했어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "PAYMENT_REPORT", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "H21",
+      "title": "협상 넘김이 열린 채 \"더 깎아 주세요\" → 같은 이유라 줄 0",
+      "required": false,
+      "group": "handoff",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "조금 깎아 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}},
+        {"text": "더 깎아 주세요", "inquiry": null, "expect": {"lines": []}}
+      ]
+    },
+    {
+      "id": "H22",
+      "title": "H20 뒤 사장이 직접 답함 → 닫힘. 그 뒤 협상은 새 넘김 줄",
+      "required": false,
+      "group": "handoff",
+      "since": 4,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "조금 깎아 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}},
+        {"text": "방금 입금했어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "PAYMENT_REPORT", "intent": "RECEIVABLE", "sourceSequence": "self"}]}},
+        {"sender": "WHOLESALER", "text": "확인하고 연락드릴게요", "inquiry": null, "expect": {"openHandoff": false}},
+        {"text": "더 깎아 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N01",
+      "title": "\"외상으로 해 주세요\" → 협상 넘김(외상을 해 달라는 꼴)",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "외상으로 해 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N02",
+      "title": "\"외상 돼요?\" → 협상 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "외상 돼요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N03",
+      "title": "\"외상 가능해요?\" → 협상 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "외상 가능해요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N04",
+      "title": "\"디씨 돼요?\" → 협상 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "디씨 돼요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N05",
+      "title": "\"DC 돼요?\" → 협상 넘김(앞뒤가 라틴 글자, 숫자가 아닌 DC)",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "DC 돼요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N06",
+      "title": "\"dc 되나요\" → 소문자도 정규화 뒤 DC라 협상 넘김(재고 낱말 되나요보다 먼저)",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "dc 되나요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N07",
+      "title": "\"에누리 좀 해 주세요\" → 협상 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "에누리 좀 해 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N08",
+      "title": "\"조금 빼주세요\" → 협상 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "조금 빼주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N09",
+      "title": "\"더 싸게 안 돼요?\" → 협상 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "더 싸게 안 돼요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N10",
+      "title": "\"다음 주에 낼게요\" → 결제 미루기라 협상 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "다음 주에 낼게요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N11",
+      "title": "\"결제 좀 미뤄 주세요\" → 협상 넘김(요청형 미뤄주)",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "결제 좀 미뤄 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "N12",
+      "title": "\"결제 미뤄도 돼요?\" → 협상 넘김(요청형 미뤄도)",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "결제 미뤄도 돼요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "U01",
+      "title": "\"사장님이랑 통화하고 싶어요\" → 사람 요청 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "사장님이랑 통화하고 싶어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "HUMAN_REQUEST", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "U02",
+      "title": "\"사장님과 이야기하고 싶어요\" → 사람 요청 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "사장님과 이야기하고 싶어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "HUMAN_REQUEST", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "U03",
+      "title": "\"직원분 바꿔 주세요\" → 사람 요청 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "직원분 바꿔 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "HUMAN_REQUEST", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "U04",
+      "title": "\"상담 가능할까요?\" → 사람 요청 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "상담 가능할까요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "HUMAN_REQUEST", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "U05",
+      "title": "\"통화 가능해요?\" → 사람 요청 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "통화 가능해요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "HUMAN_REQUEST", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "U06",
+      "title": "\"전화 주세요\" → 사람 요청 넘김(요청형 전화주)",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "전화 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "HUMAN_REQUEST", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "U07",
+      "title": "\"사장님이랑 가격 얘기하고 싶어요\" → 사람 요청이 협상보다 먼저(Q4)",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "사장님이랑 가격 얘기하고 싶어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "HUMAN_REQUEST", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "U08",
+      "title": "자동 답 꺼짐 + \"사장님이랑 통화하고 싶어요\" → 꺼짐이 사람 요청보다 먼저(OFF)",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": false},
+      "steps": [
+        {"text": "사장님이랑 통화하고 싶어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "OFF", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "U09",
+      "title": "협상 넘김이 열린 채 \"사장님이랑 통화하고 싶어요\" → 이유가 달라 새 넘김 줄",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "조금 깎아 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}},
+        {"text": "사장님이랑 통화하고 싶어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "HUMAN_REQUEST", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "G01",
+      "title": "\"레드 L 미송 미뤄졌나요?\" → 미뤄는 요청형만 협상(Q5). B01과 같은 미송 되묻기",
+      "required": false,
+      "group": "backorder",
+      "since": 5,
+      "projection": "decision",
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "레드 L 미송 미뤄졌나요?", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9001}, {"kind": "BACKORDER", "backorderId": 9006}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 4장, 9/4 주문 #7001", "빈티지 플라워 셔츠 레드/L, 남은 2장, 9/6 주문 #7006", "다른 주문이에요"]}}
+      ]
+    },
+    {
+      "id": "X01",
+      "title": "\"전화번호 바뀌었어요\" → 사람 요청이 아니다(전화를 통째로 안 씀). 의도 없음 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "전화번호 바뀌었어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NO_INTENT", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "X02",
+      "title": "\"직원이 입금했어요\" → 사람 요청이 아니다(직원을 통째로 안 씀). 입금 알림 넘김",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "직원이 입금했어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "PAYMENT_REPORT", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "X03",
+      "title": "\"입고 미뤄 주세요\" → 요청형 미뤄주라 협상 넘김(미송 낱말 입고보다 먼저)",
+      "required": false,
+      "group": "handoff",
+      "since": 5,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": true},
+      "steps": [
+        {"text": "입고 미뤄 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NEGOTIATION", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "O01",
+      "title": "자동 답 꺼짐 + 재고 질문 → OFF, 의도는 재고(켜졌다면 나갔을 줄의 intent)",
+      "required": false,
+      "group": "handoff",
+      "since": 6,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": {"listingId": 2001, "ageMinutes": 2}, "autoReply": false},
+      "steps": [
+        {"text": "레드 M 몇 장 있어요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "OFF", "intent": "STOCK", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "O02",
+      "title": "자동 답 꺼짐 + 미송 질문 → OFF, 의도는 미송",
+      "required": false,
+      "group": "handoff",
+      "since": 6,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": false},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "OFF", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "O03",
+      "title": "자동 답 꺼짐 + 미수 질문 → OFF, 의도는 미수",
+      "required": false,
+      "group": "handoff",
+      "since": 6,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": false},
+      "steps": [
+        {"text": "지금 미수 얼마예요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "OFF", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "O04",
+      "title": "자동 답 꺼짐 + 재고와 미송 같이 → OFF, 의도 둘이라 intent null",
+      "required": false,
+      "group": "handoff",
+      "since": 6,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": {"listingId": 2001, "ageMinutes": 2}, "autoReply": false},
+      "steps": [
+        {"text": "레드 L 재고랑 미송 같이 알려 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "OFF", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "O05",
+      "title": "자동 답 꺼짐 + 재고 칩 → OFF, 의도는 재고",
+      "required": false,
+      "group": "handoff",
+      "since": 6,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": false},
+      "steps": [
+        {"text": "레드 L", "inquiry": {"intent": "STOCK", "listingId": 2001, "variantId": 3003}, "expect": {"lines": [{"kind": "HANDOFF", "reason": "OFF", "intent": "STOCK", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "O06",
+      "title": "자동 답 꺼짐 + 입금 알림 → OFF, 의도는 미수(켜짐이면 PAYMENT_REPORT RECEIVABLE)",
+      "required": false,
+      "group": "handoff",
+      "since": 6,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": false},
+      "steps": [
+        {"text": "방금 입금했어요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "OFF", "intent": "RECEIVABLE", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "O07",
+      "title": "자동 답 꺼짐 + 협상 → OFF, 협상은 켜짐에서도 intent null",
+      "required": false,
+      "group": "handoff",
+      "since": 6,
+      "room": {"wholesalerId": 101, "retailerId": 1, "context": null, "autoReply": false},
+      "steps": [
+        {"text": "조금 깎아 주세요", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "OFF", "intent": null, "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K01",
+      "title": "미송 0 + 출고 준비 중 주문 1건(READY) → 번호 답 + 넘김",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효 READY, 봉투 없음"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "BACKORDER", "target": null, "body": "출고 준비 중인 주문이 있어요(#7101)", "facts": null}, {"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K02",
+      "title": "READY 1건 + PACKED 출고 전 1건 → 2건 답 + 넘김",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효 READY"},
+        {"packingId": 9202, "orderId": 7102, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "PACKED", "outboundShipped": false, "qty": 2, "note": "유효 PACKED, 봉투 출고 전"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "BACKORDER", "target": null, "body": "출고 준비 중인 주문 2건이 있어요(#7101, #7102)", "facts": null}, {"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K03",
+      "title": "READY 4건(행 순서 섞임) + \"언제 와요?\" → 앞 3개 번호 + 외 1건",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9203, "orderId": 7103, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효, 순서 섞음"},
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효"},
+        {"packingId": 9204, "orderId": 7104, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효, 넷째라 외 1건"},
+        {"packingId": 9202, "orderId": 7102, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효"}
+      ]},
+      "steps": [
+        {"text": "언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "BACKORDER", "target": null, "body": "출고 준비 중인 주문 4건이 있어요(#7101, #7102, #7103 외 1건)", "facts": null}, {"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K04",
+      "title": "같은 주문 포장 둘(분할 결과: READY + PACKED 출고 전) → 주문으로 묶어 1건",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "분할 뒤 남은 쪽 READY"},
+        {"packingId": 9202, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "PACKED", "outboundShipped": false, "qty": 1, "note": "분할 뒤 봉투에 담긴 쪽, 출고 전"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "BACKORDER", "target": null, "body": "출고 준비 중인 주문이 있어요(#7101)", "facts": null}, {"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K05",
+      "title": "PACKED 출고됨뿐 → 넘김(출고된 물건을 준비 중이라 말하지 않는다)",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "PACKED", "outboundShipped": true, "qty": 1, "note": "봉투 출고됨"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K06",
+      "title": "다른 도매처(102) 포장뿐 → 넘김(남의 주문 번호를 말하지 않는다)",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 102, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "소유 102"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K07",
+      "title": "다른 소매처(4) 포장뿐 → 넘김",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 4, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "소매처 4"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K08",
+      "title": "취소 주문 포장 + 수량 0 포장뿐 → 넘김",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": true, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "취소 주문"},
+        {"packingId": 9202, "orderId": 7102, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 0, "note": "수량 0"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K09",
+      "title": "거르기 표 한 방에: 유효 1 + 빠질 행 6 → 유효한 주문 1건만 답",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효 READY"},
+        {"packingId": 9202, "orderId": 7102, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "PACKED", "outboundShipped": true, "qty": 1, "note": "출고됨"},
+        {"packingId": 9203, "orderId": 7103, "wholesalerId": 102, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "소유 102"},
+        {"packingId": 9204, "orderId": 7104, "wholesalerId": 101, "retailerId": 3, "orderCancelled": true, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "취소 주문"},
+        {"packingId": 9205, "orderId": 7105, "wholesalerId": null, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "소유 모름(줄마다 도매처 다름)"},
+        {"packingId": 9206, "orderId": 7106, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": false, "qty": 1, "note": "이상값: READY인데 봉투 있음"},
+        {"packingId": 9207, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "PACKED", "outboundShipped": true, "qty": 1, "note": "같은 주문의 출고된 다른 포장(일부 출고)"}
+      ]},
+      "steps": [
+        {"text": "주문한 거 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "BACKORDER", "target": null, "body": "출고 준비 중인 주문이 있어요(#7101)", "facts": null}, {"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K10",
+      "title": "\"블랙 셔츠 미송 언제 와요?\"(대상 말함) → 포장을 안 보고 넘김",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효 READY"}
+      ]},
+      "steps": [
+        {"text": "블랙 셔츠 미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K11",
+      "title": "\"#7101 언제 와요?\"(번호 말함) → 넘김",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효 READY"}
+      ]},
+      "steps": [
+        {"text": "#7101 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K12",
+      "title": "포장 원본 조회 실패 1회 → 넘김(오류 아님)",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packingFailTimes": 1, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효 READY, 하지만 조회가 던진다"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K13",
+      "title": "대기상회 방(열린 미송 9005) + 포장 READY → 포장 무시, B04와 같은 칩 1개 되묻기",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "projection": "decision",
+      "room": {"wholesalerId": 101, "retailerId": 2, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7005, "wholesalerId": 101, "retailerId": 2, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효 READY, 하지만 열린 미송이 있어 안 본다"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요", "inquiry": null, "expect": {"kind": "CLARIFY", "intent": "BACKORDER", "choices": [{"kind": "BACKORDER", "backorderId": 9005}, {"kind": "NOT_LISTED", "backorderId": null}], "labels": ["빈티지 플라워 셔츠 레드/L, 남은 9장, 9/5 주문 #7005", "다른 주문이에요"]}}
+      ]
+    },
+    {
+      "id": "K14",
+      "title": "포장 답 뒤 2분 만에 다시 물음 → 두 번 다 답 + 넘김(답 + 넘김은 열린 넘김이 있어도 넣는다)",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효 READY"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "BACKORDER", "target": null, "body": "출고 준비 중인 주문이 있어요(#7101)", "facts": null}, {"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}},
+        {"text": "언제 와요?", "inquiry": null, "afterMinutes": 2, "expect": {"lines": [{"kind": "AUTO_REPLY", "intent": "BACKORDER", "target": null, "body": "출고 준비 중인 주문이 있어요(#7101)", "facts": null}, {"kind": "HANDOFF", "reason": "NO_BACKORDER", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K15",
+      "title": "자동 답 전부 꺼짐 + 포장 READY → OFF, 의도는 미송",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": false, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효 READY"}
+      ]},
+      "steps": [
+        {"text": "미송 언제 와요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "OFF", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    },
+    {
+      "id": "K16",
+      "title": "\"미송 출고 언제 돼요?\"(배송어) → NOT_SUPPORTED, 포장 단계까지 안 온다",
+      "required": false,
+      "group": "backorder",
+      "since": 7,
+      "room": {"wholesalerId": 101, "retailerId": 3, "context": null, "autoReply": true, "packings": [
+        {"packingId": 9201, "orderId": 7101, "wholesalerId": 101, "retailerId": 3, "orderCancelled": false, "packingStatus": "READY", "outboundShipped": null, "qty": 1, "note": "유효 READY"}
+      ]},
+      "steps": [
+        {"text": "미송 출고 언제 돼요?", "inquiry": null, "expect": {"lines": [{"kind": "HANDOFF", "reason": "NOT_SUPPORTED", "intent": "BACKORDER", "sourceSequence": "self"}]}}
+      ]
+    }
+  ]
+}
