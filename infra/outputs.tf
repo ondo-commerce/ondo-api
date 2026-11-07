@@ -58,3 +58,19 @@ output "github_deploy_role_arn" {
   description = "GitHub Actions 가 맡을 역할. 저장소 변수 AWS_DEPLOY_ROLE_ARN 에 넣는다"
   value       = aws_iam_role.github_deploy.arn
 }
+
+# DB 터널 (MUL-149). 끄면 null 이다 — load/retail/data/tunnel.sh 가 이 값을 읽는다
+output "db_tunnel_instance_id" {
+  description = "SSM 포트 포워딩용 EC2. enable_db_tunnel=false 면 null"
+  value       = one(aws_instance.db_tunnel[*].id)
+}
+
+output "wholesale_db_host" {
+  description = "도매 DB 호스트 (포트 없이). 터널의 목적지"
+  value       = aws_db_instance.wholesale.address
+}
+
+output "retail_db_host" {
+  description = "소매 DB 호스트 (포트 없이). 터널의 목적지"
+  value       = aws_db_instance.retail.address
+}
