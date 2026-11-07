@@ -122,10 +122,13 @@ locals {
 #
 # 로그는 여전히 CloudWatch 다. 여기서는 트레이스만 본다.
 
+# 계정이 AP1(도쿄)에 있다. 인프라가 서울이라 가장 가까운 곳으로 골랐다.
+# ⚠️ 사이트는 계정에 묶여 있어 나중에 못 바꾼다. 다른 값을 주면 Agent 가
+#    키를 「모르는 키」로 받아 트레이스가 조용히 안 들어간다
 variable "datadog_site" {
   description = "Datadog 사이트 (계정이 있는 리전). 예: datadoghq.com · ap1.datadoghq.com"
   type        = string
-  default     = "datadoghq.com"
+  default     = "ap1.datadoghq.com"
 }
 
 locals {
