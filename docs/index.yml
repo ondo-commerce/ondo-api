@@ -92,5 +92,11 @@ docs:
     layer: domain
     kind: record
 
+  - id: domain.decision.web-handoff-2026-11
+    path: docs/decisions/web-handoff-2026-11.md
+    title: 웹 인수인계(11/7) 서버 답 — 미송·포장·가용재고·검색·선수금 배분
+    layer: domain
+    kind: record
+
   # ── task ────────────────────────────────────────────────
   # 아직 없다. 스펙 문서가 생기면 docs/specs/MUL-<번호>-*.md 로 두고 여기 등록한다.
