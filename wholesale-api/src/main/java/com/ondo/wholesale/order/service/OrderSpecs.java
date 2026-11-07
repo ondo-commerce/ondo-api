@@ -31,9 +31,13 @@ final class OrderSpecs {
         return (root, query, cb) -> ids.isEmpty() ? cb.disjunction() : root.get("id").in(ids);
     }
 
-    /** 검색어는 거래처 상호와 라인 상품명 양쪽에 부분 일치(대소문자 무시)로 건다. */
+    /**
+     * 검색어는 거래처 상호와 라인 상품명 양쪽에 부분 일치(대소문자 무시)로 건다.
+     * 검색어가 숫자뿐이면 주문 번호 일치도 OR 로 더한다 (MUL-150).
+     */
     static Specification<Order> searchLike(String q) {
         String pattern = "%" + q.toLowerCase() + "%";
+        Integer orderNumber = asOrderNumber(q);
         return (root, query, cb) -> {
             Subquery<Long> partner = query.subquery(Long.class);
             Root<Partner> p = partner.from(Partner.class);
@@ -49,8 +53,25 @@ final class OrderSpecs {
                     cb.equal(v.get("id"), oi.get("variantId")),
                     cb.like(cb.lower(v.get("product").get("name")), pattern));
 
-            return cb.or(cb.exists(partner), cb.exists(item));
+            if (orderNumber == null) {
+                return cb.or(cb.exists(partner), cb.exists(item));
+            }
+            return cb.or(cb.exists(partner), cb.exists(item),
+                    cb.equal(root.get("orderNumber"), orderNumber));
         };
+    }
+
+    /** 숫자뿐이고 int 범위 안이면 주문 번호로 본다. 넘치면 숫자가 아닌 검색어와 같게 다룬다. */
+    private static Integer asOrderNumber(String q) {
+        String trimmed = q.trim();
+        if (trimmed.isEmpty() || !trimmed.chars().allMatch(c -> c >= '0' && c <= '9')) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(trimmed);
+        } catch (NumberFormatException overflow) {
+            return null;
+        }
     }
 
     /** 정산 탭 전용 — 그 거래처의 확정 주문만 내려간다는 계약을 조건으로 옮긴 것. */
