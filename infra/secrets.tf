@@ -31,3 +31,27 @@ resource "aws_secretsmanager_secret_version" "gateway" {
   secret_id     = aws_secretsmanager_secret.gateway.id
   secret_string = random_password.gateway_secret.result
 }
+
+# ─────────────────────────────────────────────────────────────
+# Datadog API 키 (MUL-148)
+#
+# 사이드카 Agent 가 트레이스를 Datadog 으로 보낼 때 쓴다.
+#
+# 위 게이트웨이 시크릿과 달리 값(secret_version)을 터라폼이 안 만든다.
+# 키는 Datadog 이 발급한 것이라 터라폼이 생성할 수 없고, 여기 적으면
+# 코드나 state 에 키가 남는다. 껍데기만 만들고 값은 사람이 한 번 넣는다:
+#
+#   aws secretsmanager put-secret-value --profile ondo \
+#     --secret-id ondo-dev-datadog-api-key --secret-string '<API 키>'
+#
+# ⚠️ 값을 넣기 전에 배포하면 태스크가 안 뜬다 — ECS 가 시크릿을 못 읽어서
+#    컨테이너를 시작하지 못한다. apply 하고 값 넣고, 그다음 배포한다.
+# ─────────────────────────────────────────────────────────────
+resource "aws_secretsmanager_secret" "datadog_api_key" {
+  name        = "${local.prefix}-datadog-api-key"
+  description = "Datadog API key for the ECS sidecar agent"
+
+  recovery_window_in_days = 0
+
+  tags = { Name = "${local.prefix}-datadog-api-key" }
+}

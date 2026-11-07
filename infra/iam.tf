@@ -148,3 +148,26 @@ resource "aws_iam_role" "task_wholesale" {
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
   tags               = { Name = "${local.prefix}-task-wholesale" }
 }
+
+# ── Datadog API 키 (MUL-148) ─────────────────────────────────
+#
+# 두 실행 역할이 같이 읽는다. 사이드카 Agent 에 넣어줄 값이라 앱이 아니라
+# ECS(실행 역할)가 읽는다. 게이트웨이 시크릿처럼 서로의 것이 아니라 공용이다.
+data "aws_iam_policy_document" "read_datadog_secret" {
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.datadog_api_key.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "exec_retail_datadog_secret" {
+  name   = "read-datadog-secret"
+  role   = aws_iam_role.exec_retail.id
+  policy = data.aws_iam_policy_document.read_datadog_secret.json
+}
+
+resource "aws_iam_role_policy" "exec_wholesale_datadog_secret" {
+  name   = "read-datadog-secret"
+  role   = aws_iam_role.exec_wholesale.id
+  policy = data.aws_iam_policy_document.read_datadog_secret.json
+}
