@@ -48,6 +48,9 @@ resource "aws_secretsmanager_secret_version" "gateway" {
 #    컨테이너를 시작하지 못한다. apply 하고 값 넣고, 그다음 배포한다.
 # ─────────────────────────────────────────────────────────────
 resource "aws_secretsmanager_secret" "datadog_api_key" {
+  # enable_datadog 을 켤 때만 만든다 (ecs.tf)
+  count = var.enable_datadog ? 1 : 0
+
   name        = "${local.prefix}-datadog-api-key"
   description = "Datadog API key for the ECS sidecar agent"
 

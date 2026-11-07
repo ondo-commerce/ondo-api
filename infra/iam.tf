@@ -153,21 +153,27 @@ resource "aws_iam_role" "task_wholesale" {
 #
 # 두 실행 역할이 같이 읽는다. 사이드카 Agent 에 넣어줄 값이라 앱이 아니라
 # ECS(실행 역할)가 읽는다. 게이트웨이 시크릿처럼 서로의 것이 아니라 공용이다.
+#
+# enable_datadog 을 켤 때만 생긴다 (ecs.tf)
 data "aws_iam_policy_document" "read_datadog_secret" {
+  count = var.enable_datadog ? 1 : 0
+
   statement {
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_secretsmanager_secret.datadog_api_key.arn]
+    resources = [aws_secretsmanager_secret.datadog_api_key[0].arn]
   }
 }
 
 resource "aws_iam_role_policy" "exec_retail_datadog_secret" {
+  count  = var.enable_datadog ? 1 : 0
   name   = "read-datadog-secret"
   role   = aws_iam_role.exec_retail.id
-  policy = data.aws_iam_policy_document.read_datadog_secret.json
+  policy = data.aws_iam_policy_document.read_datadog_secret[0].json
 }
 
 resource "aws_iam_role_policy" "exec_wholesale_datadog_secret" {
+  count  = var.enable_datadog ? 1 : 0
   name   = "read-datadog-secret"
   role   = aws_iam_role.exec_wholesale.id
-  policy = data.aws_iam_policy_document.read_datadog_secret.json
+  policy = data.aws_iam_policy_document.read_datadog_secret[0].json
 }
