@@ -87,12 +87,16 @@ resource "aws_cloudwatch_log_group" "wholesale" {
 # 「이 이미지를 이만한 자원으로, 이 환경변수와 함께 띄워라」는 설계도다.
 # 실제로 뜨는 건 D 의 서비스가 이걸 보고 만든다.
 #
-# 512 CPU / 1024 MB 로 잡았다. Fargate 는 조합이 정해져 있어서 256 CPU 를 쓰면
+# 처음엔 512 CPU / 1024 MB 였다. Fargate 는 조합이 정해져 있어서 256 CPU 를 쓰면
 # 메모리를 512·1024·2048 중에서만 고를 수 있다. 스프링 부트에 512MB 는 빠듯하다.
+#
+# 1024 / 2048 로 올렸다 (MUL-148). 태스크 안에 Datadog Agent 사이드카가 같이 돌아
+# 자원을 나눠 쓴다. ⚠️ Fargate 요금이 그대로 두 배가 된다 — MUL-144 에서 줄인 것과
+# 반대 방향이다. APM 을 안 볼 때는 사이드카를 빼고 되돌린다.
 
 locals {
-  task_cpu    = 512
-  task_memory = 1024
+  task_cpu    = 1024
+  task_memory = 2048
 
   # ECS 가 시크릿을 읽어 환경변수로 넣어준다. 뒤의 `:password::` 는
   # RDS 가 만든 JSON({"username":..,"password":..})에서 password 키만 꺼내라는 뜻이다.
@@ -107,6 +111,65 @@ locals {
   # 소매가 도매를 부르는 주소. HTTP 다 — VPC 안에서만 도는 트래픽이라
   # 인증서를 붙이지 않았다(alb_internal.tf)
   wholesale_base_url = "http://${aws_lb.internal.dns_name}"
+}
+
+# ── Datadog APM (MUL-148) ────────────────────────────────────
+#
+# 태스크마다 Agent 를 사이드카로 하나씩 띄운다. Fargate 는 호스트가 없어서
+# 「호스트마다 Agent 하나」를 못 하고, 같은 태스크 안 컨테이너끼리는
+# localhost 로 통한다(awsvpc). 앱의 dd-java-agent 가 localhost:8126 으로
+# 트레이스를 보내면 사이드카가 받아 Datadog 으로 넘긴다.
+#
+# 로그는 여전히 CloudWatch 다. 여기서는 트레이스만 본다.
+
+variable "datadog_site" {
+  description = "Datadog 사이트 (계정이 있는 리전). 예: datadoghq.com · ap1.datadoghq.com"
+  type        = string
+  default     = "datadoghq.com"
+}
+
+locals {
+  # 메이저 버전만 고정한다. 마이너는 Agent 가 하위 호환을 지킨다.
+  # ARM64 이미지가 같은 태그에 들어 있다
+  datadog_agent_image = "public.ecr.aws/datadog/agent:7"
+
+  # Agent 는 tracer 에 env 를 다시 붙이지 않는다. 앱과 같은 값을 따로 준다
+  datadog_env = var.spring_profile
+
+  # 두 태스크가 같이 쓰는 사이드카 정의. 서비스별로 다른 건 로그 그룹뿐이다
+  datadog_agent_container = {
+    name  = "datadog-agent"
+    image = local.datadog_agent_image
+
+    # essential = false — Agent 가 죽어도 앱은 계속 응답한다. 트레이스가 잠깐
+    # 비는 것이 API 가 내려가는 것보다 낫다. true 면 Agent 하나 때문에 태스크가 갈린다
+    essential = false
+
+    portMappings = [{
+      containerPort = 8126 # APM 트레이스 수신
+      protocol      = "tcp"
+    }]
+
+    environment = [
+      # Fargate 라는 걸 알려야 호스트 대신 태스크 메타데이터로 자기를 식별한다
+      { name = "ECS_FARGATE", value = "true" },
+      { name = "DD_SITE", value = var.datadog_site },
+      { name = "DD_APM_ENABLED", value = "true" },
+      { name = "DD_ENV", value = local.datadog_env },
+    ]
+
+    secrets = [
+      { name = "DD_API_KEY", valueFrom = aws_secretsmanager_secret.datadog_api_key.arn },
+    ]
+
+    healthCheck = {
+      command     = ["CMD-SHELL", "agent health"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 15
+    }
+  }
 }
 
 resource "aws_ecs_task_definition" "retail" {
@@ -175,6 +238,17 @@ resource "aws_ecs_task_definition" "retail" {
       # SDK 가 리전을 환경에서 알아내기도 하지만 ECS 가 늘 넣어주는 값이 아니다.
       # 없으면 기동이 아니라 첫 업로드에서 터진다
       { name = "AWS_REGION", value = "ap-northeast-2" },
+
+      # Datadog APM (MUL-148).
+      #
+      # -javaagent 를 Dockerfile 이 아니라 여기서 켠다. jar 는 이미지에 들어 있지만
+      # 로컬 docker run 에는 Agent 가 없어서, 켜 두면 연결 실패 로그만 쌓인다.
+      #
+      # DD_VERSION 은 여기 없다 — 배포 커밋 해시라 CI 가 이미지와 같이 넣는다
+      # (.github/workflows/retail-api.yml 의 render 단계)
+      { name = "JAVA_TOOL_OPTIONS", value = "-javaagent:/app/dd-java-agent.jar" },
+      { name = "DD_SERVICE", value = "ondo-retail" },
+      { name = "DD_ENV", value = local.datadog_env },
     ]
 
     secrets = [
@@ -191,7 +265,20 @@ resource "aws_ecs_task_definition" "retail" {
         "awslogs-stream-prefix" = "ecs"
       }
     }
-  }])
+    },
+
+    # Datadog Agent 사이드카 (MUL-148). 로그는 앱과 같은 그룹, 접두사만 다르다
+    merge(local.datadog_agent_container, {
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.retail.name
+          "awslogs-region"        = "ap-northeast-2"
+          "awslogs-stream-prefix" = "datadog"
+        }
+      }
+    }),
+  ])
 
   tags = { Name = "${local.prefix}-retail" }
 }
@@ -250,6 +337,17 @@ resource "aws_ecs_task_definition" "wholesale" {
       #
       # 환경변수로 주면 운영 태스크에도 붙일 수 있어서, 시드 계정이 운영에 안 들어가는 걸
       # 사람이 기억해서 막아야 한다. 프로필 파일에 두면 dev 일 때만 읽히니 실수로 못 켠다.
+
+      # Datadog APM (MUL-148).
+      #
+      # -javaagent 를 Dockerfile 이 아니라 여기서 켠다. jar 는 이미지에 들어 있지만
+      # 로컬 docker run 에는 Agent 가 없어서, 켜 두면 연결 실패 로그만 쌓인다.
+      #
+      # DD_VERSION 은 여기 없다 — 배포 커밋 해시라 CI 가 이미지와 같이 넣는다
+      # (.github/workflows/wholesale-api.yml 의 render 단계)
+      { name = "JAVA_TOOL_OPTIONS", value = "-javaagent:/app/dd-java-agent.jar" },
+      { name = "DD_SERVICE", value = "ondo-wholesale" },
+      { name = "DD_ENV", value = local.datadog_env },
     ]
 
     secrets = [
@@ -267,7 +365,20 @@ resource "aws_ecs_task_definition" "wholesale" {
         "awslogs-stream-prefix" = "ecs"
       }
     }
-  }])
+    },
+
+    # Datadog Agent 사이드카 (MUL-148). 로그는 앱과 같은 그룹, 접두사만 다르다
+    merge(local.datadog_agent_container, {
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.wholesale.name
+          "awslogs-region"        = "ap-northeast-2"
+          "awslogs-stream-prefix" = "datadog"
+        }
+      }
+    }),
+  ])
 
   tags = { Name = "${local.prefix}-wholesale" }
 }

@@ -38,6 +38,15 @@ USER ondo
 
 COPY --from=build /app/build/libs/*.jar app.jar
 
+# Datadog APM tracer (MUL-148). 버전을 고정한다 — latest 를 받으면 같은 커밋으로
+# 빌드해도 이미지마다 tracer 가 달라진다. 올릴 때는 이 줄만 바꾼다.
+#
+# 넣어만 둔다. 켜는 건 태스크 정의의 JAVA_TOOL_OPTIONS 다(infra/ecs.tf) —
+# 로컬 docker run 에는 Agent 가 없어서 여기서 켜면 연결 실패 로그만 쌓인다.
+# --chmod 가 없으면 URL 로 받은 파일이 600 이라 ondo 사용자가 못 읽는다
+ARG DD_JAVA_AGENT_VERSION=1.68.1
+ADD --chmod=644 https://repo1.maven.org/maven2/com/datadoghq/dd-java-agent/${DD_JAVA_AGENT_VERSION}/dd-java-agent-${DD_JAVA_AGENT_VERSION}.jar /app/dd-java-agent.jar
+
 # 프로필은 여기서 안 박는다 (MUL-104).
 #
 # 전에는 ENV SPRING_PROFILES_ACTIVE=prod 가 있었다. 그때는 배포 프로필이 하나뿐이라
