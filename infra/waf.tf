@@ -8,6 +8,24 @@
 #    면접에서 그렇게 말하는 게 맞다(인프라.md).
 # ─────────────────────────────────────────────────────────────
 
+# 부하 테스트 동안 무차별 대입 규칙을 「세기만」으로 바꾼다 (MUL-149).
+#
+# 이 규칙은 IP 하나가 5분에 2000번(초당 7번쯤)을 넘으면 막는다. k6 는 한 IP 에서
+# 초당 수십~수백 번을 보내서 몇 초 만에 차단된다.
+#
+# true 로 두면 차단 대신 세기만 한다 — 어디서 막혔을지는 CloudWatch 지표로 남는다.
+# 다른 규칙(공통 · SQL 인젝션)은 그대로 막는다.
+#
+#   terraform apply -var waf_rate_limit_count_only=true    테스트 시작
+#   terraform apply                                        끝나면 원복
+#
+# ⚠️ 켜 둔 동안은 로그인 무차별 대입도 안 막힌다. 테스트가 끝나면 바로 되돌린다
+variable "waf_rate_limit_count_only" {
+  description = "true 면 rate-limit 규칙이 차단하지 않고 세기만 한다 (부하 테스트용)"
+  type        = bool
+  default     = false
+}
+
 resource "aws_wafv2_web_acl" "external" {
   name  = "${local.prefix}-waf"
   scope = "REGIONAL" # ALB 는 REGIONAL. CloudFront 면 CLOUDFRONT 다
@@ -25,7 +43,15 @@ resource "aws_wafv2_web_acl" "external" {
     priority = 1
 
     action {
-      block {}
+      dynamic "block" {
+        for_each = var.waf_rate_limit_count_only ? [] : [1]
+        content {}
+      }
+
+      dynamic "count" {
+        for_each = var.waf_rate_limit_count_only ? [1] : []
+        content {}
+      }
     }
 
     statement {
