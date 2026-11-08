@@ -103,6 +103,13 @@ public enum ErrorCode {
     ALLOCATION_EXCEEDS_PREPAID(HttpStatus.CONFLICT, "배분 합계가 남은 선수금을 넘을 수 없습니다."),
     ALLOCATION_EXCEEDS_OUTSTANDING(HttpStatus.CONFLICT, "주문의 남은 미수보다 많이 배분할 수 없습니다."),
 
+    // ── 정산 계좌 (MUL-130) ──
+    // HTTP 상태는 계좌 계약 스텁(BankAccountController @Operation)이 적은 대로 둘 다 400 이다.
+    // 중복은 errors[0].data 에 기존 계좌 id 를 실어 화면이 그 계좌로 안내하게 한다.
+    DUPLICATE_BANK_ACCOUNT(HttpStatus.BAD_REQUEST, "이미 등록된 계좌입니다."),
+    PRIMARY_ACCOUNT_CANNOT_BE_UNSET(HttpStatus.BAD_REQUEST,
+            "주계좌는 직접 해제할 수 없습니다. 다른 계좌를 주계좌로 지정해 주세요."),
+
     // ── 회원 (MUL-70·71) ──
     // 심사 현황·재신청은 계약 스텁이 없어 선등록할 코드가 없다 — 구현이 이 자리에 채운다.
 

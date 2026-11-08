@@ -161,6 +161,9 @@ public class RetailGatewayOrderQuery {
      * 그릴 수가 없다. 계좌가 비어 있는 도매처는 아직 등록을 안 한 것이고, 그때는
      * 소매 화면이 계좌이체를 못 고르게 막는다.
      *
+     * <p>계좌는 주계좌다 (MUL-130). 주계좌는 도매처당 최대 1개(bank_account_primary_uk)라
+     * LEFT JOIN 이 행을 불리지 않는다. 계좌가 0건이면 셋 다 null — 위의 "미등록" 그대로다.
+     *
      * <p>지워진 도매처도 돌려준다. 지난 주문의 주문서를 다시 열 수 있어야 해서다.
      */
     public List<RetailWholesalerResponse> wholesalers(List<Long> ids) {
@@ -168,10 +171,11 @@ public class RetailGatewayOrderQuery {
             return List.of();
         }
         return jdbc.sql("""
-                        SELECT id, biz_name, store_building, store_unit,
-                               bank_name, bank_account_no, bank_account_holder
-                        FROM wholesale.wholesaler
-                        WHERE id IN (:ids)
+                        SELECT w.id, w.biz_name, w.store_building, w.store_unit,
+                               ba.bank_name, ba.account_no AS bank_account_no, ba.account_holder AS bank_account_holder
+                        FROM wholesale.wholesaler w
+                        LEFT JOIN wholesale.bank_account ba ON ba.wholesaler_id = w.id AND ba.is_primary
+                        WHERE w.id IN (:ids)
                         """)
                 .param("ids", ids)
                 .query((rs, rowNum) -> new RetailWholesalerResponse(

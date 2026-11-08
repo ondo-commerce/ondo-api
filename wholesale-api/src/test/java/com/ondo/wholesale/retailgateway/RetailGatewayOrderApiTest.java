@@ -1,5 +1,6 @@
 package com.ondo.wholesale.retailgateway;
 
+import com.ondo.wholesale.support.MasterDataFixture;
 import com.ondo.wholesale.support.PostgresTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -251,10 +252,11 @@ class RetailGatewayOrderApiTest extends PostgresTestSupport {
     // ── 조회 (MUL-98) ───────────────────────────────────────────
 
     @Test
-    @DisplayName("도매처 정보에 입금 계좌가 같이 온다")
+    @DisplayName("도매처 정보에 입금 계좌(주계좌)가 같이 온다")
     void 도매처_정보를_준다() throws Exception {
-        jdbc.update("UPDATE wholesale.wholesaler SET bank_name='국민', bank_account_no='123-456',"
-                + " bank_account_holder='무드온' WHERE id = " + 도매처);
+        // 소매에 나가는 건 주계좌다 (MUL-130) — 먼저 등록한 일반 계좌가 있어도
+        MasterDataFixture.계좌를_넣는다(jdbc, 도매처, "신한", "999-999", "부계좌", false);
+        MasterDataFixture.계좌를_넣는다(jdbc, 도매처, "국민", "123-456", "무드온", true);
 
         mvc.perform(get("/api/retail-gateway/wholesalers").param("ids", String.valueOf(도매처)))
                 .andExpect(status().isOk())
@@ -293,6 +295,25 @@ class RetailGatewayOrderApiTest extends PostgresTestSupport {
                 // 아무것도 안 나갔으니 전부 아직 못 받은 것이다
                 .andExpect(jsonPath("$.data[0].items[0].receivedQty").value(0))
                 .andExpect(jsonPath("$.data[0].items[0].backorderQty").value(3));
+    }
+
+    @Test
+    @DisplayName("되읽은 주문의 도매처 계좌는 주계좌다 — 계좌가 여럿이어도 주문이 불어나지 않는다")
+    void 되읽은_주문의_계좌는_주계좌다() throws Exception {
+        MasterDataFixture.계좌를_넣는다(jdbc, 도매처, "신한", "999-999", "부계좌", false);
+        MasterDataFixture.계좌를_넣는다(jdbc, 도매처, "국민", "123-456", "무드온", true);
+        MasterDataFixture.계좌를_넣는다(jdbc, 도매처, "기업", "888-888", "부계좌", false);
+        접수(7102, 도매처, "{ \"variantId\": 9211, \"qty\": 1, \"expectedUnitPrice\": 12500 }");
+
+        mvc.perform(get("/api/retail-gateway/orders")
+                        .param("retailerId", String.valueOf(소매처))
+                        .param("retailOrderIds", "7102"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].items.length()").value(1))
+                .andExpect(jsonPath("$.data[0].wholesaler.bankName").value("국민"))
+                .andExpect(jsonPath("$.data[0].wholesaler.bankAccountNo").value("123-456"))
+                .andExpect(jsonPath("$.data[0].wholesaler.bankAccountHolder").value("무드온"));
     }
 
     @Test

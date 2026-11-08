@@ -1,11 +1,16 @@
 package com.ondo.wholesale.settlement;
 
+import com.ondo.wholesale.security.WholesalePrincipal;
 import com.ondo.wholesale.settlement.dto.BankAccountCreateRequest;
 import com.ondo.wholesale.settlement.dto.BankAccountResponse;
 import com.ondo.wholesale.settlement.dto.BankAccountUpdateRequest;
+import com.ondo.wholesale.settlement.service.BankAccountService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -19,20 +24,23 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 정산 계좌 계약 스텁 (MUL-83) — 원본: api-lite/07_정산 계좌 4종.
- * example 응답만 반환하며 실구현이 서비스 계층으로 교체한다.
+ * 정산 계좌 4종 — 원본 계약: api-lite/07_정산 계좌(스텁 MUL-83). 실구현 MUL-130.
+ * 규칙과 동시성은 {@link BankAccountService}에 있다.
  */
 @Tag(name = "07 정산")
 @RestController
 @RequestMapping("/api/wholesale/bank-accounts")
+@RequiredArgsConstructor
 public class BankAccountController {
+
+    private final BankAccountService bankAccountService;
 
     @Operation(summary = "정산 계좌 목록", description = """
             페이징 없음(계좌는 소수). 정렬은 주계좌 먼저 → 등록순 고정(sort 미지원).
             주계좌는 최대 1개, 계좌 0건도 정상 상태.""")
     @GetMapping
-    public List<BankAccountResponse> accounts() {
-        return BankAccountStubExamples.accounts();
+    public List<BankAccountResponse> accounts(@AuthenticationPrincipal WholesalePrincipal principal) {
+        return bankAccountService.list(principal.wholesalerId());
     }
 
     @Operation(summary = "정산 계좌 등록", description = """
@@ -43,8 +51,9 @@ public class BankAccountController {
             에러: 400 `VALIDATION_FAILED` · `DUPLICATE_BANK_ACCOUNT`(data 에 기존 계좌 id)""")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public BankAccountResponse create(@RequestBody BankAccountCreateRequest request) {
-        return BankAccountStubExamples.primaryAccount();
+    public BankAccountResponse create(@AuthenticationPrincipal WholesalePrincipal principal,
+                                      @Valid @RequestBody BankAccountCreateRequest request) {
+        return bankAccountService.create(principal.wholesalerId(), request);
     }
 
     @Operation(summary = "정산 계좌 수정", description = """
@@ -54,9 +63,10 @@ public class BankAccountController {
             에러: 400 `VALIDATION_FAILED` · `PRIMARY_ACCOUNT_CANNOT_BE_UNSET` ·
             `DUPLICATE_BANK_ACCOUNT` / 404 `RESOURCE_NOT_FOUND`""")
     @PatchMapping("/{bankAccountId}")
-    public BankAccountResponse update(@PathVariable Long bankAccountId,
+    public BankAccountResponse update(@AuthenticationPrincipal WholesalePrincipal principal,
+                                      @PathVariable Long bankAccountId,
                                       @RequestBody BankAccountUpdateRequest request) {
-        return BankAccountStubExamples.primaryAccount();
+        return bankAccountService.update(principal.wholesalerId(), bankAccountId, request);
     }
 
     @Operation(summary = "정산 계좌 삭제", description = """
@@ -66,6 +76,8 @@ public class BankAccountController {
             에러: 404 `RESOURCE_NOT_FOUND`(이미 삭제 포함)""")
     @DeleteMapping("/{bankAccountId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long bankAccountId) {
+    public void delete(@AuthenticationPrincipal WholesalePrincipal principal,
+                       @PathVariable Long bankAccountId) {
+        bankAccountService.delete(principal.wholesalerId(), bankAccountId);
     }
 }
