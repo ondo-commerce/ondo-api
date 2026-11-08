@@ -28,6 +28,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p><b>절반이 "안 들어가는지" 를 보는 테스트다.</b> 접수는 도매 장부에 쓰는 일이라,
  * 남의 상품이나 바뀐 가격이 조용히 통과하면 되돌리기 어렵다.
+ *
+ * <p>접수와 한 트랜잭션에 생기는 새 주문 알림(MUL-154)도 여기서 본다. 알림 목록·읽음은
+ * {@code NotificationIntegrationTest} 몫이다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -162,6 +165,49 @@ class RetailGatewayOrderApiTest extends PostgresTestSupport {
 
         // 한 줄이 걸리면 주문 전체가 안 들어간다
         assertThat(count("SELECT count(*) FROM wholesale.orders")).isZero();
+    }
+
+    @Test
+    @DisplayName("접수하면 그 도매처에 새 주문 알림이 1건 생긴다 (MUL-154)")
+    void 접수하면_새_주문_알림이_생긴다() throws Exception {
+        String body = mvc.perform(post("/api/retail-gateway/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(요청(7101, """
+                                { "variantId": 9211, "qty": 3, "expectedUnitPrice": 12500 },
+                                { "variantId": 9212, "qty": 2, "expectedUnitPrice": 12500 }
+                                """)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        long orderId = ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
+
+        var 알림 = jdbc.queryForMap("SELECT * FROM wholesale.notification WHERE wholesaler_id = " + 도매처);
+        assertThat(알림.get("type")).isEqualTo("NEW_ORDER");
+        assertThat(알림.get("title")).isEqualTo("봄봄상회 새 주문");
+        // 첫 라인 + 나머지 줄 수 + 총 장수
+        assertThat(알림.get("body")).isEqualTo("빈티지 셔츠 블랙 / S 외 1건, 5장");
+        assertThat(알림.get("target_kind")).isEqualTo("ORDER");
+        assertThat(((Number) 알림.get("target_id")).longValue()).isEqualTo(orderId);
+        assertThat(알림.get("read_at")).isNull();
+        // 남의 도매처에는 안 간다
+        assertThat(count("SELECT count(*) FROM wholesale.notification WHERE wholesaler_id = " + 남의도매처)).isZero();
+    }
+
+    @Test
+    @DisplayName("접수가 막히면 알림도 없다 — 주문과 같은 트랜잭션이다 (MUL-154)")
+    void 막힌_접수는_알림을_안_남긴다() throws Exception {
+        접수(7102, 도매처, "{ \"variantId\": 9211, \"qty\": 1, \"expectedUnitPrice\": 12500 }");
+
+        // 같은 주문서 재전송(409)과 바뀐 가격(409) — 둘 다 알림이 더 생기면 안 된다
+        mvc.perform(post("/api/retail-gateway/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(요청(7102, "{ \"variantId\": 9211, \"qty\": 1, \"expectedUnitPrice\": 12500 }")))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/retail-gateway/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(요청(7103, "{ \"variantId\": 9211, \"qty\": 1, \"expectedUnitPrice\": 9999 }")))
+                .andExpect(status().isConflict());
+
+        assertThat(count("SELECT count(*) FROM wholesale.notification")).isEqualTo(1);
     }
 
     @Test
