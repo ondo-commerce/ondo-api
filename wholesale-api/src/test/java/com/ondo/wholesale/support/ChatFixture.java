@@ -7,7 +7,7 @@ import java.time.OffsetDateTime;
 /**
  * 채팅 픽스처 (MUL-158) — 방과 줄을 SQL 로 직접 심는다.
  *
- * <p>소매 보내기와 자동 답(MUL-157)이 아직 없어서 소매 글·자동 답·넘김 줄은 여기서만 만든다.
+ * <p>소매 보내기·자동 답 API(MUL-157)를 거치지 않고 소매 글·자동 답·넘김 줄을 직접 심을 때 쓴다.
  * 줄을 넣을 때 운영 {@code ChatMessageAppender} 와 같은 규칙으로 방 머리를 고친다 — sequence 채번,
  * 마지막 메시지·활동 시각, 열린 넘김(HANDOFF 면 열고 WHOLESALER TEXT 면 닫는다).
  */
