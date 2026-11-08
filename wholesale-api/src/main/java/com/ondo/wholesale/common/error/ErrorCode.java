@@ -128,9 +128,10 @@ public enum ErrorCode {
     // 소매가 연타하거나 응답을 못 받고 재시도해도 주문이 둘 생기지 않는다.
     ORDER_ALREADY_CREATED(HttpStatus.CONFLICT, "이미 접수된 주문입니다."),
 
-    // ── 알림 (MUL-154) ──
+    // ── 알림 (MUL-154 도매 · MUL-155 소매) ──
     // 모두 읽음({all, expectedUnread})에서 실제로 바뀐 수가 화면이 본 수와 다르다.
     // 그 사이 새 알림이 왔거나 다른 탭이 읽었다. 아무것도 바꾸지 않고 롤백한다.
+    // 소매 알림은 gateway 가 이 코드를 내고, 소매가 같은 코드로 프론트에 옮긴다.
     UNREAD_CHANGED(HttpStatus.CONFLICT, "그 사이 안 읽은 알림 수가 바뀌었습니다."),
     ;
 

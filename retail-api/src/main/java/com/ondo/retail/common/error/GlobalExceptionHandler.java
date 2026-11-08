@@ -33,7 +33,7 @@ public class GlobalExceptionHandler {
         ErrorCode code = e.errorCode();
         log.warn("[{}] {}", code.name(), e.getMessage());
         return ResponseEntity.status(code.status())
-                .body(ErrorResponse.of(code, e.getMessage(), traceId()));
+                .body(new ErrorResponse(code.name(), e.getMessage(), traceId(), e.errors()));
     }
 
     /** @Valid 가 걸러낸 것. 어느 필드가 왜 걸렸는지 errors[] 에 담는다. */

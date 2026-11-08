@@ -53,7 +53,14 @@ public enum ErrorCode {
      * <p>조용히 성공으로 두면 취소된 줄 알고 다른 도매에서 또 산다. 이미 접수됐을 수도
      * 있으니 분명히 알려야 한다.
      */
-    DISPATCH_NOT_PENDING(HttpStatus.CONFLICT, "이미 처리된 주문이에요. 주문 내역을 확인해주세요");
+    DISPATCH_NOT_PENDING(HttpStatus.CONFLICT, "이미 처리된 주문이에요. 주문 내역을 확인해주세요"),
+
+    /**
+     * 「모두 읽음」을 눌렀는데 그 사이 안 읽은 알림 수가 바뀌었다 (MUL-155).
+     *
+     * <p>새 알림이 왔거나 다른 탭이 읽은 것이다. 아무것도 안 바꿨다 — 화면이 목록을 다시 받는다.
+     */
+    UNREAD_CHANGED(HttpStatus.CONFLICT, "그 사이 새 알림이 있어요. 목록을 다시 확인해주세요");
 
     private final HttpStatus status;
     private final String message;
