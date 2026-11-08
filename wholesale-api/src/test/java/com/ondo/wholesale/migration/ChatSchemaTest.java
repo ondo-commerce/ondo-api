@@ -43,7 +43,9 @@ class ChatSchemaTest extends PostgresTestSupport {
                 select table_name from information_schema.tables
                 where table_schema = 'wholesale' and table_name like 'chat%' order by table_name
                 """, String.class);
-        assertThat(tables).containsExactly("chat_message", "chat_room", "chat_send_idempotency");
+        // chat_auto_reply_setting 은 V19(MUL-159) — ChatAutoReplySettingSchemaTest 가 본다
+        assertThat(tables).containsExactly("chat_auto_reply_setting", "chat_message", "chat_room",
+                "chat_send_idempotency");
 
         List<String> indexes = jdbc.queryForList("""
                 select indexname from pg_indexes where schemaname = 'wholesale' and tablename like 'chat%'

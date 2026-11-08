@@ -40,20 +40,41 @@ public final class ChatFixture {
 
     /** 사장이 쓴 TEXT(보내기 API 를 거치지 않고). */
     public static long 도매_글을_넣는다(JdbcTemplate jdbc, long roomId, String body) {
-        return 줄을_넣는다(jdbc, roomId, "WHOLESALER", "TEXT", body, OffsetDateTime.now(), true, null, null, null, null);
+        return 도매_글을_넣는다(jdbc, roomId, body, OffsetDateTime.now());
+    }
+
+    public static long 도매_글을_넣는다(JdbcTemplate jdbc, long roomId, String body, OffsetDateTime sentAt) {
+        return 줄을_넣는다(jdbc, roomId, "WHOLESALER", "TEXT", body, sentAt, true, null, null, null, null);
     }
 
     /** 자동 답(AUTO_REPLY) 한 줄. autoReplyJson 은 {generatedBy, checkedAt, subject, facts, choices}. */
     public static long 자동_답을_넣는다(JdbcTemplate jdbc, long roomId, String body, String intent,
                                   long replyToSequence, String autoReplyJson) {
-        return 줄을_넣는다(jdbc, roomId, "WHOLESALER", "AUTO_REPLY", body, OffsetDateTime.now(), false,
+        return 자동_답을_넣는다(jdbc, roomId, body, intent, replyToSequence, autoReplyJson, OffsetDateTime.now());
+    }
+
+    public static long 자동_답을_넣는다(JdbcTemplate jdbc, long roomId, String body, String intent,
+                                  long replyToSequence, String autoReplyJson, OffsetDateTime sentAt) {
+        return 줄을_넣는다(jdbc, roomId, "WHOLESALER", "AUTO_REPLY", body, sentAt, false,
                 intent, replyToSequence, null, autoReplyJson);
+    }
+
+    /** 되묻기(CLARIFY) 한 줄 (MUL-159 문의 지표용). 근거 JSON 은 비운다 — 집계는 칸만 읽는다. */
+    public static long 되묻기를_넣는다(JdbcTemplate jdbc, long roomId, String body, String intent,
+                                 long replyToSequence, OffsetDateTime sentAt) {
+        return 줄을_넣는다(jdbc, roomId, "WHOLESALER", "CLARIFY", body, sentAt, false,
+                intent, replyToSequence, null, null);
     }
 
     /** 사람 넘김 줄(SYSTEM HANDOFF). intent 는 못 읽었으면 null. */
     public static long 넘김_줄을_넣는다(JdbcTemplate jdbc, long roomId, String body, String reason, String intent,
                                   long sourceSequence) {
-        return 줄을_넣는다(jdbc, roomId, "SYSTEM", "HANDOFF", body, OffsetDateTime.now(), false,
+        return 넘김_줄을_넣는다(jdbc, roomId, body, reason, intent, sourceSequence, OffsetDateTime.now());
+    }
+
+    public static long 넘김_줄을_넣는다(JdbcTemplate jdbc, long roomId, String body, String reason, String intent,
+                                  long sourceSequence, OffsetDateTime sentAt) {
+        return 줄을_넣는다(jdbc, roomId, "SYSTEM", "HANDOFF", body, sentAt, false,
                 intent, sourceSequence, reason, null);
     }
 
