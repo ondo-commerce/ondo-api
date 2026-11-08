@@ -78,7 +78,7 @@ MUL-152 「알림 API」의 소매 쪽 설계 메모다. 소매 3 op(`notificati
 - 프론트 검증(size 1..100 기본 20, 커서, 본문 `oneOf`)과 에러 칸(`errors[{field}]`)은 **소매가** 한다 — 에러 모양이 소매 계약이다.
 - 커서는 소매가 만든다. 불투명 base64url(`"<epoch µs>|<id>"`), keyset `(created_at, id) <`. 소매가 `size + 1` 을 물어 다음 장을 안다.
   시각을 마이크로초 숫자로 넘기는 건 ① timestamptz 정밀도와 맞추고 ② ISO 문자열의 `+` 가 쿼리에서 공백으로 바뀌는 사고를 피하려는 것이다.
-- 배지의 `chats` 는 채팅이 아직 없어 **0** 이다. 채팅(MUL-157)이 붙으면 같은 게이트웨이 배지가 함께 준다(**제안**).
+- 배지의 `chats` 는 채팅 게이트웨이 `GET /api/retail-gateway/chat/unread-count` 가 준다(MUL-157). 소매가 알림 배지와 함께 부른다.
 
 ## 남은 일
 

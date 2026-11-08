@@ -70,7 +70,7 @@ public class ChatCommandService {
         RoomRow room = roomRepository.lockForWholesaler(roomId, wholesalerId)
                 .orElseThrow(ChatQueryService::roomNotFound);
 
-        String requestHash = fingerprint(request);
+        String requestHash = fingerprint(objectMapper, request);
         Optional<ChatSendIdempotencyRepository.Recorded> known =
                 idempotencyRepository.find(room.id(), ChatSender.WHOLESALER, key);
         if (known.isPresent()) {
@@ -122,8 +122,8 @@ public class ChatCommandService {
         return new ChatReadResult(room.id(), saved, unread);
     }
 
-    /** 계약 format uuid. {@code UUID.fromString} 은 "1-1-1-1-1" 도 받아서 모양을 따로 본다. */
-    private static UUID parseKey(String idempotencyKey) {
+    /** 계약 format uuid. {@code UUID.fromString} 은 "1-1-1-1-1" 도 받아서 모양을 따로 본다. 소매 보내기도 쓴다(MUL-157). */
+    static UUID parseKey(String idempotencyKey) {
         if (idempotencyKey == null || !UUID_SHAPE.matcher(idempotencyKey).matches()) {
             throw ApiException.validationFailed("Idempotency-Key", "Idempotency-Key 헤더(uuid)가 필요합니다.");
         }
@@ -132,8 +132,9 @@ public class ChatCommandService {
 
     /**
      * "같은 본문" 지문 — 보낸 그대로의 body(공백을 지우기 전)와 inquiry 를 본다. notListed 가 빠진 것과 false 는 같다.
+     * 소매 보내기도 같은 지문을 쓴다(MUL-157).
      */
-    private String fingerprint(SendChatMessageRequest request) {
+    static String fingerprint(ObjectMapper objectMapper, SendChatMessageRequest request) {
         ChatInquiry inquiry = request.inquiry();
         ChatInquiry normalized = inquiry == null ? null : new ChatInquiry(inquiry.intent(), inquiry.listingId(),
                 inquiry.variantId(), inquiry.backorderId(), inquiry.label(), Boolean.TRUE.equals(inquiry.notListed()));

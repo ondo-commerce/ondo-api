@@ -56,7 +56,7 @@ public class NotificationController {
     }
 
     @Operation(summary = "헤더 배지 둘", description = """
-            안 읽은 알림 수 · 안 읽은 채팅 수 · 가장 최근 알림 id. 채팅은 아직 없어 `chats` 는 0 이다.""")
+            안 읽은 알림 수 · 안 읽은 채팅 수(내 방 unreadCount 합, MUL-157) · 가장 최근 알림 id.""")
     @GetMapping("/unread-count")
     public ApiResponse<RetailUnreadCount> unreadCount(Authentication authentication) {
         return ApiResponse.of(notificationService.unreadCount(retailerId(authentication)));

@@ -92,6 +92,7 @@ A 안이면 판정이 도매 안에서 돈다 — **새 게이트웨이 조회�
 | 도매 | **V17** | `chat_room` · `chat_message`(intent, handoff_reason 칸 포함) · 멱등 키 (MUL-158) | 머지됨 |
 | 도매 | V18 | 소매 알림 `retail_notification` (MUL-155) | 머지됨 |
 | 도매 | V19 | 자동 답 설정 (MUL-159) | **예약** |
+| 도매 | V20 | `chat_room.context_listing_id` · `context_at` — 방 상품 문맥 (MUL-157) | 이 브랜치 |
 | 소매 | V6 · V7 | 알림 · 채팅 | **반납** — A 안(도매 소유)으로 정해져 소매엔 두 테이블이 없다 |
 
 도매는 `spring.flyway.out-of-order: true` 라 번호 순서와 머지 순서가 달라도 적용된다. 번호만 겹치지 않으면 된다. (2026-11-08 갱신)
@@ -112,3 +113,20 @@ A 안이면 판정이 도매 안에서 돈다 — **새 게이트웨이 조회�
 - `InquiryGoldenFileTest` — 늘 돈다. v7 · 132 시나리오 · 167 단계 · 점수 파일과 개수 일치 · 정규화 6행.
 - `InquiryGoldenScenarioTest` — `@Disabled`(MUL-157). 시나리오마다 컨테이너, 단계마다 테스트(167 + 정규화 17 = 184개).
 - `InquiryJudge` — 테스트 쪽 이음매. 골든 JSON 을 받아 `expect` 와 같은 투영을 돌려준다. 운영 판정기 모양은 MUL-157 이 정한다.
+
+## MUL-157 구현 메모 (2026-11-08)
+
+- **판정기** `wholesale-api` `com.ondo.wholesale.chat.inquiry` — `InquiryDecider.decide`(순수) → `InquiryLines.generated` →
+  `InquiryLines.toAppend`. 웹 `inquiry.ts` @ cdb20a1 을 옮겼다. 골든 167/167 + 정규화 17/17 (`GoldenInquiryJudge` 어댑터).
+- **보내기** `RetailChatService.send` — 방 잠금 → 멱등 → 소매 TEXT → `ChatAutoReplyGenerator` 가 원본(`InquirySourceReader`)을
+  읽어 판정하고 줄을 `ChatMessageAppender` 로 붙인다. 원본 조회는 JDBC 세이브포인트 안이라 SQL 실패도 넘김 줄(LOOKUP_FAILED 등)로 남는다.
+  판정이 던지면 NO_INTENT 넘김. 멱등 기록에는 도매 모양 결과를 두고 내보낼 때마다 소매 모양으로 바꾼다.
+- **게이트웨이** `/api/retail-gateway/chat/` — `rooms`(GET keyset µs·id / POST 열기 `{retailerId, retailerName, wholesalerId, listingId}`),
+  `rooms/{id}`, `rooms/{id}/messages`(GET/POST, `Idempotency-Key`), `rooms/{id}/read`, `unread-count`. 응답은 소매 모양 —
+  재고 facts 는 `band · orderLimit · orderable` 뿐이고 메시지에 `handoff` 칸이 없다. `orderable` 은 내보낼 때 다시 계산한다.
+- **원본 값** 판매가능 = `stock_qty − reserved_qty − 그 SKU 열린 미송 남은 수`(웹 목 규칙). 칩·답 글자의 주문 번호는
+  `orders.retail_order_id`(소매 주문서 id) — 소매 주문서가 없는 주문의 미송·포장은 원본에서 뺀다. 미수 `exact=false` 는 조정·입금 무효 줄,
+  나눠 출고, 취소 주문 출고 줄, 출고보다 큰 배정이 있을 때.
+- **방 열기** 승인된 도매처만(그 밖 404). 상호는 소매 DB `shop_name` 스냅샷.
+- **설정** `AutoReplySettingsSource` — 지금은 `DefaultAutoReplySettingsSource`(전부 켜짐). MUL-159 가 V19 테이블 구현으로 바꾼다.
+- **소매 배지** `notificationUnreadCount.chats` = 게이트웨이 `unread-count`(내 방 unreadCount 합).

@@ -60,7 +60,14 @@ public enum ErrorCode {
      *
      * <p>새 알림이 왔거나 다른 탭이 읽은 것이다. 아무것도 안 바꿨다 — 화면이 목록을 다시 받는다.
      */
-    UNREAD_CHANGED(HttpStatus.CONFLICT, "그 사이 새 알림이 있어요. 목록을 다시 확인해주세요");
+    UNREAD_CHANGED(HttpStatus.CONFLICT, "그 사이 새 알림이 있어요. 목록을 다시 확인해주세요"),
+
+    /**
+     * 같은 Idempotency-Key(말풍선 하나)로 다른 본문이 왔다 (MUL-157, 채팅 보내기).
+     *
+     * <p>그 키에 한해 영구 거절이다 — 다시 보내도 늘 같다. 화면은 새 말풍선(새 키)으로 보낸다.
+     */
+    IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "이미 다른 내용으로 보낸 메시지예요. 새로 보내주세요");
 
     private final HttpStatus status;
     private final String message;

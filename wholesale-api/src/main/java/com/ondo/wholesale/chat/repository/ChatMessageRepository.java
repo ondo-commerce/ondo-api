@@ -136,6 +136,32 @@ public class ChatMessageRepository {
         return newestFirst;
     }
 
+    /** 방 안 sequence 하나. 없으면 null. */
+    public ChatMessage findBySequence(long roomId, long sequence) {
+        return jdbc.sql(COLUMNS + " where m.room_id = :roomId and m.sequence = :sequence")
+                .param("roomId", roomId)
+                .param("sequence", sequence)
+                .query(this::message)
+                .optional()
+                .orElse(null);
+    }
+
+    /**
+     * 판정이 읽는 지난 줄 (MUL-157) — {@code since} 이후에 보낸 것 중 최신 limit 개를 오름차순으로.
+     * 판정의 되묻기·칩 검증은 30분 안의 줄만 본다(그보다 오래된 되묻기는 만료다). 그래서 방 전체를 읽지 않는다.
+     */
+    public List<ChatMessage> findRecentSince(long roomId, OffsetDateTime since, int limit) {
+        List<ChatMessage> newestFirst = new ArrayList<>(jdbc.sql(COLUMNS
+                        + " where m.room_id = :roomId and m.sent_at >= :since order by m.sequence desc limit :limit")
+                .param("roomId", roomId)
+                .param("since", since)
+                .param("limit", limit)
+                .query(this::message)
+                .list());
+        Collections.reverse(newestFirst);
+        return newestFirst;
+    }
+
     /** 그 sender 가 보낸 것 중 sequence 초과분. 미확인 수 계산 — 인덱스 (room_id, sender, sequence). */
     public int countFromAfter(long roomId, ChatSender sender, long afterSequence) {
         return jdbc.sql("""

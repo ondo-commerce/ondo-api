@@ -1,5 +1,6 @@
 package com.ondo.retail.notification;
 
+import com.ondo.retail.chat.ChatClient;
 import com.ondo.retail.common.error.BusinessException;
 import com.ondo.retail.common.error.ErrorCode;
 import com.ondo.retail.common.error.ErrorResponse.FieldError;
@@ -33,10 +34,8 @@ public class NotificationService {
     static final int MAX_SIZE = 100;
     static final int MAX_IDS = 100;
 
-    /** 화면이 아직 채팅 배지를 못 받는다. 채팅(MUL-157)이 붙으면 도매가 같이 준다. */
-    private static final int CHATS_NOT_YET = 0;
-
     private final NotificationClient client;
+    private final ChatClient chatClient;
 
     /**
      * 한 장. size + 1 개를 받아 하나가 더 있으면 다음 장이 있는 것이다 — 전체 개수를 세지 않는다.
@@ -58,9 +57,14 @@ public class NotificationService {
         return new NotificationPageResponse(List.copyOf(page), new NotificationPageResponse.Meta(next));
     }
 
+    /**
+     * 헤더 배지 둘. 채팅 몫(MUL-157)은 도매 채팅 게이트웨이의 배지 하나로 받는다 — 방 목록을 다 받지 않는다
+     * (docs/design/chat.md a). 정의는 방 목록 unreadCount 의 합과 같다.
+     */
     public RetailUnreadCount unreadCount(Long retailerId) {
         NotificationClient.Unread unread = client.unread(retailerId);
-        return new RetailUnreadCount(unread.notifications(), CHATS_NOT_YET, unread.latestNotificationId());
+        int chats = chatClient.unreadChats(retailerId);
+        return new RetailUnreadCount(unread.notifications(), chats, unread.latestNotificationId());
     }
 
     /**
