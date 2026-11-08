@@ -120,6 +120,11 @@ public enum ErrorCode {
     // 멱등성 (D-052). UNIQUE(retail_order_id, wholesaler_id) 가 막는다 —
     // 소매가 연타하거나 응답을 못 받고 재시도해도 주문이 둘 생기지 않는다.
     ORDER_ALREADY_CREATED(HttpStatus.CONFLICT, "이미 접수된 주문입니다."),
+
+    // ── 소매 알림 (MUL-155) ──
+    // 소매 "모두 읽음"({all, expectedUnread})에서 실제로 바뀐 수가 화면이 본 수와 다를 때.
+    // 아무것도 안 바꾸고(롤백) 돌려준다. 소매가 같은 코드로 프론트에 옮긴다.
+    UNREAD_CHANGED(HttpStatus.CONFLICT, "그 사이 안 읽은 알림 수가 바뀌었습니다."),
     ;
 
     private final HttpStatus status;
