@@ -72,6 +72,8 @@
 
 `availableQty = stockQty − reservedQty`. 미송 대기량은 빼지 않는다 (`W/product/service/ProductDetailAssembler.java:89-94`, `W/product/dto/response/VariantResponse.java:8`). 응답의 `allocatedQty` 필드 값이 `reservedQty` 다.
 
+**채팅 재고 답은 다르게 센다 (MUL-157, 2026-11-08 결정).** 자동 답의 재고 구간은 `stockQty − reservedQty − 그 SKU 의 열린 미송 남은 수` 로 계산한다 (`W/chat/inquiry/InquirySourceReader.java:45-53`). 웹 목 규칙을 따랐다 — 입고되면 미송이 먼저 풀리니 그만큼은 새 주문에 못 준다. 그래서 같은 상품이 화면의 `availableQty` 보다 채팅에서 낮은 구간으로 보일 수 있다. 채팅 쪽이 보수적이라 "있다고 했는데 없다" 는 줄어든다. 두 숫자를 맞출지는 #212 답과 함께 정한다.
+
 ## 4. D34 재고 0 주문 — 불일치
 
 서버는 재고가 0 이어도 주문을 받는다 (D-062). 소매 접수 `POST /api/retail-gateway/orders` 는 재고를 보지 않는다 (`W/retailgateway/RetailGatewayOrderService.java:27`, 라인 검증 `:126-158` 에 재고 검사 없음). 재고는 도매가 확정·포장할 때 보고, 모자라면 409 `INSUFFICIENT_STOCK` 이다.
