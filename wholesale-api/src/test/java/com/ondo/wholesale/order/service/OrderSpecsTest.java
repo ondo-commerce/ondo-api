@@ -23,7 +23,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 주문 목록 검색 조건(Specification) 통합 검증 (MUL-47).
+ * 주문 목록 검색 조건(Specification) 통합 검증 (MUL-47, 주문 번호 검색 MUL-150).
  */
 @SpringBootTest
 @Transactional
@@ -68,6 +68,32 @@ class OrderSpecsTest extends PostgresTestSupport {
         assertThat(ids(spec(OrderSpecs.searchLike("행복")))).containsExactly(orderId);
         assertThat(ids(spec(OrderSpecs.searchLike("니트")))).containsExactly(orderId);
         assertThat(ids(spec(OrderSpecs.searchLike("없는말")))).isEmpty();
+    }
+
+    @Test
+    void 숫자뿐인_검색어는_주문_번호_일치도_건다() {
+        long 찾는주문 = 주문(1501, "NEW", OffsetDateTime.now());
+        long 다른주문 = 주문(1502, "NEW", OffsetDateTime.now());
+
+        assertThat(ids(spec(OrderSpecs.searchLike("1501")))).containsExactly(찾는주문);
+        assertThat(ids(spec(OrderSpecs.searchLike(" 1502 ")))).containsExactly(다른주문);
+        assertThat(ids(spec(OrderSpecs.searchLike("150")))).isEmpty();
+    }
+
+    @Test
+    void 숫자_검색어는_주문_번호와_이름_부분_일치를_함께_돌려준다() {
+        long 번호일치 = 주문(77, "NEW", OffsetDateTime.now());
+        long 이름일치 = OrderFixture.주문을_넣는다(jdbc, wholesalerId,
+                OrderFixture.거래처를_넣는다(jdbc, wholesalerId, 703L, "77상회"), 1, "NEW", OffsetDateTime.now());
+
+        assertThat(ids(spec(OrderSpecs.searchLike("77")))).containsExactlyInAnyOrder(번호일치, 이름일치);
+    }
+
+    @Test
+    void int_범위를_넘는_숫자_검색어는_이름_검색으로만_다룬다() {
+        주문(1, "NEW", OffsetDateTime.now());
+
+        assertThat(ids(spec(OrderSpecs.searchLike("99999999999")))).isEmpty();
     }
 
     @Test

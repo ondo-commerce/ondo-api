@@ -92,6 +92,12 @@ docs:
     layer: domain
     kind: record
 
+  - id: domain.design.notification
+    path: docs/design/notification.md
+    title: 소매 알림 · 입고 예정일 변경 연동 설계 — DB 위치 · 실패/재시도 (MUL-155)
+    layer: domain
+    kind: guide
+
   - id: domain.design.chat
     path: docs/design/chat.md
     title: 채팅·문의 자동 답 설계 — DB 소유 · 판정 데이터 · 넘김 이유 · 거절 코드 · Flyway 번호 (MUL-156, 제안)

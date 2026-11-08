@@ -62,12 +62,13 @@ public class RetailGatewayOrderViewQuery {
                                w.biz_name            AS wholesaler_name,
                                w.store_building      AS store_building,
                                w.store_unit          AS store_unit,
-                               w.bank_name           AS bank_name,
-                               w.bank_account_no     AS bank_account_no,
-                               w.bank_account_holder AS bank_account_holder
+                               ba.bank_name          AS bank_name,
+                               ba.account_no         AS bank_account_no,
+                               ba.account_holder     AS bank_account_holder
                         FROM wholesale.orders o
                         JOIN wholesale.partner pt   ON pt.id = o.partner_id
                         JOIN wholesale.wholesaler w ON w.id = o.wholesaler_id
+                        LEFT JOIN wholesale.bank_account ba ON ba.wholesaler_id = w.id AND ba.is_primary
                         WHERE o.retail_order_id IN (:retailOrderIds)
                           AND pt.retailer_id = :retailerId
                         ORDER BY o.retail_order_id DESC, o.id

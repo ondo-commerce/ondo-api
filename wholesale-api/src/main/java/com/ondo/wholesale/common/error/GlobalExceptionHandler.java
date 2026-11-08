@@ -4,11 +4,16 @@ import com.ondo.wholesale.common.trace.TraceIdFilter;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 
@@ -58,6 +63,46 @@ public class GlobalExceptionHandler {
         return build(ErrorCode.VALIDATION_FAILED, ErrorCode.VALIDATION_FAILED.defaultMessage(), errors);
     }
 
+    /** 필수 쿼리 파라미터 누락 — 클라이언트 요청 문제라 400 이다 (MUL-80). */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParameter(MissingServletRequestParameterException ex) {
+        List<ErrorResponse.FieldError> errors = List.of(
+                new ErrorResponse.FieldError(ex.getParameterName(), "필수 파라미터가 없습니다."));
+        return build(ErrorCode.VALIDATION_FAILED, ErrorCode.VALIDATION_FAILED.defaultMessage(), errors);
+    }
+
+    /**
+     * 본문을 못 읽었다 — JSON 이 깨졌거나 enum 값이 틀렸다 (MUL-80). 다시 보내도 똑같으니 400 이다.
+     * 어느 필드인지는 파서 메시지에만 있어 errors 는 비운다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex) {
+        return build(ErrorCode.VALIDATION_FAILED, ErrorCode.VALIDATION_FAILED.defaultMessage(), List.of());
+    }
+
+    /**
+     * 없는 주소 (MUL-80). 스프링이 정상적으로 던지는 것이라 서버 잘못이 아니다.
+     * 아래 catch-all 보다 먼저 잡아야 500 으로 새지 않는다.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResource(NoResourceFoundException ex) {
+        return build(ErrorCode.RESOURCE_NOT_FOUND, ErrorCode.RESOURCE_NOT_FOUND.defaultMessage(), List.of());
+    }
+
+    /** 있는 주소인데 메서드가 틀렸다 — POST /login 을 GET 으로 부른 경우 (MUL-80). */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethod(HttpRequestMethodNotSupportedException ex) {
+        return build(ErrorCode.METHOD_NOT_ALLOWED, ErrorCode.METHOD_NOT_ALLOWED.defaultMessage(), List.of());
+    }
+
+    /** 못 받는 Content-Type — JSON API 에 text/plain 을 보낸 경우 (MUL-80). */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMediaType(HttpMediaTypeNotSupportedException ex) {
+        return build(ErrorCode.UNSUPPORTED_MEDIA_TYPE, ErrorCode.UNSUPPORTED_MEDIA_TYPE.defaultMessage(),
+                List.of());
+    }
+
+    /** 위에서 못 잡은 것 — 진짜 서버 잘못이다. */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnknown(Exception ex) {
         return build(ErrorCode.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR.defaultMessage(), List.of());
