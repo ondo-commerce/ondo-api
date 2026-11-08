@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ondo.retail.chat.ChatClient;
 import com.ondo.retail.common.error.BusinessException;
 import com.ondo.retail.common.error.ErrorCode;
 import com.ondo.retail.notification.dto.NotificationResponse;
@@ -52,6 +53,7 @@ class NotificationControllerTest {
     @Autowired MockMvc mvc;
 
     @MockitoBean NotificationClient client;
+    @MockitoBean ChatClient chatClient;
 
     @Test
     @DisplayName("size 를 안 주면 20, 21개를 물어 하나가 남으면 nextCursor 가 붙는다")
@@ -103,14 +105,15 @@ class NotificationControllerTest {
     }
 
     @Test
-    @DisplayName("배지 — 채팅이 아직 없어 chats 는 0 이다")
+    @DisplayName("배지 — chats 는 도매 채팅 배지(내 방 unreadCount 합)를 그대로 싣는다 (MUL-157)")
     void 배지() throws Exception {
         when(client.unread(봄봄)).thenReturn(new NotificationClient.Unread(2, 2031L));
+        when(chatClient.unreadChats(봄봄)).thenReturn(3);
 
         mvc.perform(get("/api/retail/notifications/unread-count"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.notifications").value(2))
-                .andExpect(jsonPath("$.data.chats").value(0))
+                .andExpect(jsonPath("$.data.chats").value(3))
                 .andExpect(jsonPath("$.data.latestNotificationId").value(2031));
     }
 
