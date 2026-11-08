@@ -23,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 주문 목록·칩·상세 API 통합 검증 (MUL-47) — 실제 스키마 위에서 조립 결과를 본다.
  * 검색 조건·집계의 세부 규칙은 OrderSpecsTest·OrderSummaryReaderTest 가 이미 본다.
+ * q 의 주문 번호 검색(MUL-150)은 여기서 HTTP 까지 — 넘치는 숫자가 500 이 아닌지 — 만 본다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -112,6 +113,31 @@ class OrderQueryIntegrationTest extends PostgresTestSupport {
 
         mvc.perform(get("/api/wholesale/orders?from=2026-09-05&to=2026-09-06")
                         .with(TestSecuritySupport.approvedAs(wholesalerId)))
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    void q에_주문_번호를_주면_그_주문이_나온다() throws Exception {
+        long 찾는주문 = 주문(1501, "NEW", 시각(10, 0));
+        OrderFixture.라인을_넣는다(jdbc, 찾는주문, 니트, 1, 1000, 0, 0);
+        long 다른주문 = 주문(1502, "NEW", 시각(11, 0));
+        OrderFixture.라인을_넣는다(jdbc, 다른주문, 니트, 1, 1000, 0, 0);
+
+        mvc.perform(get("/api/wholesale/orders?q=1501")
+                        .with(TestSecuritySupport.approvedAs(wholesalerId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].orderNumber").value(1501));
+    }
+
+    @Test
+    void q가_int_범위를_넘는_숫자여도_200이고_빈_목록이다() throws Exception {
+        long 신규 = 주문(1, "NEW", 시각(10, 0));
+        OrderFixture.라인을_넣는다(jdbc, 신규, 니트, 1, 1000, 0, 0);
+
+        mvc.perform(get("/api/wholesale/orders?q=99999999999")
+                        .with(TestSecuritySupport.approvedAs(wholesalerId)))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(0));
     }
 

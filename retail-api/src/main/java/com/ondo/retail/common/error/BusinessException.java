@@ -1,13 +1,25 @@
 package com.ondo.retail.common.error;
 
+import java.util.List;
+
 /** 우리가 의도적으로 던지는 예외. GlobalExceptionHandler 가 ErrorResponse 로 바꾼다. */
 public class BusinessException extends RuntimeException {
 
     private final ErrorCode errorCode;
+    private final transient List<ErrorResponse.FieldError> errors;
 
     public BusinessException(ErrorCode errorCode) {
+        this(errorCode, errorCode.message());
+    }
+
+    /**
+     * 어느 칸이 걸렸는지 같이 알려야 할 때 (MUL-155). {@code @Valid} 로 못 거르는 검증 —
+     * 알림 커서·본문 갈래 — 이 {@code errors[{field}]} 를 채운다. 문구는 코드 기본값이다.
+     */
+    public BusinessException(ErrorCode errorCode, List<ErrorResponse.FieldError> errors) {
         super(errorCode.message());
         this.errorCode = errorCode;
+        this.errors = List.copyOf(errors);
     }
 
     /**
@@ -19,9 +31,15 @@ public class BusinessException extends RuntimeException {
     public BusinessException(ErrorCode errorCode, String message) {
         super(message);
         this.errorCode = errorCode;
+        this.errors = List.of();
     }
 
     public ErrorCode errorCode() {
         return errorCode;
+    }
+
+    /** 필드 단위 에러. 없으면 빈 배열이다. */
+    public List<ErrorResponse.FieldError> errors() {
+        return errors;
     }
 }

@@ -42,7 +42,7 @@ public class RetailGatewaySettlementService {
         LocalDate today = LocalDate.now(KST);
         List<PartnerRow> partners = jdbc.sql("""
                         SELECT pt.id, w.id AS wholesaler_id, w.biz_name, pt.receivable_balance,
-                               w.bank_name, w.bank_account_no, w.bank_account_holder,
+                               ba.bank_name, ba.account_no AS bank_account_no, ba.account_holder AS bank_account_holder,
                                (SELECT max(p.paid_at) FROM wholesale.payment p
                                  WHERE p.partner_id = pt.id AND p.voided_at IS NULL) AS last_paid_at,
                                (SELECT coalesce(sum(p.amount), 0) FROM wholesale.payment p
@@ -50,6 +50,7 @@ public class RetailGatewaySettlementService {
                                    AND p.paid_at >= :windowStart) AS paid_recent
                         FROM wholesale.partner pt
                         JOIN wholesale.wholesaler w ON w.id = pt.wholesaler_id
+                        LEFT JOIN wholesale.bank_account ba ON ba.wholesaler_id = w.id AND ba.is_primary
                         WHERE pt.retailer_id = :retailerId
                         ORDER BY pt.receivable_balance DESC, w.id
                         """)
