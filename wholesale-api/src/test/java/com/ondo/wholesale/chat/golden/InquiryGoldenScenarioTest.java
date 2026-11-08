@@ -1,6 +1,5 @@
 package com.ondo.wholesale.chat.golden;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DynamicContainer;
 import org.junit.jupiter.api.DynamicNode;
 import org.junit.jupiter.api.DynamicTest;
@@ -16,7 +15,7 @@ import java.util.stream.StreamSupport;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 문의 자동 답 판정이 골든셋 132 시나리오 · 167 단계와 정확히 같은지 (MUL-156, 구현은 MUL-157).
+ * 문의 자동 답 판정이 골든셋 132 시나리오 · 167 단계와 정확히 같은지 (MUL-156 틀, MUL-157 판정기).
  *
  * <p>웹 목({@code inquiry.ts})과 서버가 <b>같은 파일</b>로 같은 판정을 내는지 보는 게 목적이다.
  * 웹 점수 파일 기준은 전 단계 정확 일치(exact 167/167), 잘못된 자동 답 0 이다. 필수 P1~P5 만이 아니라
@@ -24,21 +23,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>시나리오 하나가 컨테이너, 단계 하나가 테스트다. 실패 메시지에 시나리오 id · 단계 번호 · 본문이 찍힌다.
  */
-@Disabled("MUL-157 에서 판정기를 구현하고 JUDGE 를 진짜 어댑터로 바꾼 뒤 켠다")
 class InquiryGoldenScenarioTest {
 
-    /** MUL-157 이 진짜 판정기를 감싼 어댑터로 바꾼다. */
-    private static final InquiryJudge JUDGE = new InquiryJudge() {
-        @Override
-        public List<JsonNode> play(JsonNode golden, JsonNode scenario) {
-            throw new UnsupportedOperationException("판정기 미구현 (MUL-157)");
-        }
-
-        @Override
-        public JsonNode judgeNormalizationCase(JsonNode golden, JsonNode normalizationCase) {
-            throw new UnsupportedOperationException("판정기 미구현 (MUL-157)");
-        }
-    };
+    /** 운영 판정기({@code InquiryDecider} → {@code InquiryLines})를 감싼 어댑터 (MUL-157). */
+    private static final InquiryJudge JUDGE = new GoldenInquiryJudge();
 
     private final JsonNode golden = InquiryGolden.golden();
 

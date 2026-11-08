@@ -5,7 +5,7 @@ import tools.jackson.databind.JsonNode;
 import java.util.List;
 
 /**
- * 골든셋을 판정기에 물리는 이음매 (MUL-156). 구현은 MUL-157 이 만든다.
+ * 골든셋을 판정기에 물리는 이음매 (MUL-156). 구현은 {@link GoldenInquiryJudge}(MUL-157).
  *
  * <p>운영 판정기의 모양(입력 레코드, 결정 타입)은 아직 정하지 않았다. 여기서 그걸 미리 박으면
  * MUL-157 이 테스트에 맞춰 도메인을 짜게 된다. 그래서 이 인터페이스는 <b>골든셋 JSON 을 받아

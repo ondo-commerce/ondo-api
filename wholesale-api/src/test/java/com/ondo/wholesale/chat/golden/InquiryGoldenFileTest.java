@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 골든셋 파일 자체가 온전한지 (MUL-156). 스프링·DB 없이 돈다.
  *
- * <p>판정 결과가 기대와 같은지는 {@link InquiryGoldenScenarioTest} 가 본다(MUL-157 전까지 꺼져 있다).
+ * <p>판정 결과가 기대와 같은지는 {@link InquiryGoldenScenarioTest} 가 본다.
  * 여기는 복사가 잘렸거나 다른 버전을 가져온 사고만 잡는다 — 그러면 판정 테스트가 켜져도
  * 시나리오 일부만 돌고 초록이 된다.
  */
