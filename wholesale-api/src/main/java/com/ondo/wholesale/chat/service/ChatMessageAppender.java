@@ -41,6 +41,11 @@ public class ChatMessageAppender {
 
     /** 붙인 줄과 그 뒤 열린 넘김 sequence(없으면 null). */
     public record Appended(ChatMessage message, Long openHandoffSequence) {
+
+        /** 이 줄을 붙인 뒤의 방. 자동 답 줄을 이어 붙일 때 다음 {@link #append} 에 넘긴다(MUL-157). */
+        public RoomRow roomAfter(RoomRow before) {
+            return before.appended(message.sequence(), openHandoffSequence);
+        }
     }
 
     static Long nextOpenHandoff(Long current, NewMessage message, long sequence) {

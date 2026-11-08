@@ -128,4 +128,14 @@ class ChatSchemaTest extends PostgresTestSupport {
         assertThatThrownBy(() -> ChatFixture.소매가_읽는다(jdbc, 방, 1))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
+
+    @Test
+    void 방_상품_문맥은_게시글과_시각이_함께_있거나_함께_없다() {
+        jdbc.update("update wholesale.chat_room set context_listing_id = 2001, context_at = now() where id = ?", 방);
+        jdbc.update("update wholesale.chat_room set context_listing_id = null, context_at = null where id = ?", 방);
+
+        assertThatThrownBy(() -> jdbc.update(
+                "update wholesale.chat_room set context_listing_id = 2001, context_at = null where id = ?", 방))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
 }
