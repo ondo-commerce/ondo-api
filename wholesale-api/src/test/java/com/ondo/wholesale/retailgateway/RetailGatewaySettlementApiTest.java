@@ -61,8 +61,10 @@ class RetailGatewaySettlementApiTest extends PostgresTestSupport {
     void 거래를_심는다() throws Exception {
         무드온 = MasterDataFixture.도매처를_넣는다(jdbc, "gw-settle-moodon@ondo.test", "9500000140");
         라라도매 = MasterDataFixture.도매처를_넣는다(jdbc, "gw-settle-lala@ondo.test", "9500000141");
-        jdbc.update("update wholesale.wholesaler set biz_name = '무드온', bank_name = '국민', "
-                + "bank_account_no = '123-45-678', bank_account_holder = '김무드' where id = ?", 무드온);
+        jdbc.update("update wholesale.wholesaler set biz_name = '무드온' where id = ?", 무드온);
+        // 소매에 나가는 건 주계좌다 (MUL-130) — 먼저 등록한 일반 계좌가 있어도
+        MasterDataFixture.계좌를_넣는다(jdbc, 무드온, "신한", "999-99-999", "김부계좌", false);
+        MasterDataFixture.계좌를_넣는다(jdbc, 무드온, "국민", "123-45-678", "김무드", true);
         jdbc.update("update wholesale.wholesaler set biz_name = '라라도매' where id = ?", 라라도매);
 
         long 우리무드온 = OrderFixture.거래처를_넣는다(jdbc, 무드온, 우리, "우리소매");

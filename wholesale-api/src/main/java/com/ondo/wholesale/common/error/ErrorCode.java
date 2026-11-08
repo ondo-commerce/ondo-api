@@ -103,6 +103,13 @@ public enum ErrorCode {
     ALLOCATION_EXCEEDS_PREPAID(HttpStatus.CONFLICT, "배분 합계가 남은 선수금을 넘을 수 없습니다."),
     ALLOCATION_EXCEEDS_OUTSTANDING(HttpStatus.CONFLICT, "주문의 남은 미수보다 많이 배분할 수 없습니다."),
 
+    // ── 정산 계좌 (MUL-130) ──
+    // HTTP 상태는 계좌 계약 스텁(BankAccountController @Operation)이 적은 대로 둘 다 400 이다.
+    // 중복은 errors[0].data 에 기존 계좌 id 를 실어 화면이 그 계좌로 안내하게 한다.
+    DUPLICATE_BANK_ACCOUNT(HttpStatus.BAD_REQUEST, "이미 등록된 계좌입니다."),
+    PRIMARY_ACCOUNT_CANNOT_BE_UNSET(HttpStatus.BAD_REQUEST,
+            "주계좌는 직접 해제할 수 없습니다. 다른 계좌를 주계좌로 지정해 주세요."),
+
     // ── 회원 (MUL-70·71) ──
     // 심사 현황·재신청은 계약 스텁이 없어 선등록할 코드가 없다 — 구현이 이 자리에 채운다.
 
@@ -121,9 +128,10 @@ public enum ErrorCode {
     // 소매가 연타하거나 응답을 못 받고 재시도해도 주문이 둘 생기지 않는다.
     ORDER_ALREADY_CREATED(HttpStatus.CONFLICT, "이미 접수된 주문입니다."),
 
-    // ── 소매 알림 (MUL-155) ──
-    // 소매 "모두 읽음"({all, expectedUnread})에서 실제로 바뀐 수가 화면이 본 수와 다를 때.
-    // 아무것도 안 바꾸고(롤백) 돌려준다. 소매가 같은 코드로 프론트에 옮긴다.
+    // ── 알림 (MUL-154 도매 · MUL-155 소매) ──
+    // 모두 읽음({all, expectedUnread})에서 실제로 바뀐 수가 화면이 본 수와 다르다.
+    // 그 사이 새 알림이 왔거나 다른 탭이 읽었다. 아무것도 바꾸지 않고 롤백한다.
+    // 소매 알림은 gateway 가 이 코드를 내고, 소매가 같은 코드로 프론트에 옮긴다.
     UNREAD_CHANGED(HttpStatus.CONFLICT, "그 사이 안 읽은 알림 수가 바뀌었습니다."),
     ;
 

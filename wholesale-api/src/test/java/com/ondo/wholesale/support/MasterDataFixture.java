@@ -21,6 +21,15 @@ public final class MasterDataFixture {
                 """, Long.class, email, bizRegNo);
     }
 
+    /** 정산 계좌 한 건 (MUL-130). 주계좌는 도매처당 하나 — 둘째 주계좌는 bank_account_primary_uk 에 걸린다. */
+    public static long 계좌를_넣는다(JdbcTemplate jdbc, long wholesalerId, String bankName, String accountNo,
+                               String accountHolder, boolean primary) {
+        return jdbc.queryForObject("""
+                insert into wholesale.bank_account (wholesaler_id, bank_name, account_no, account_holder, is_primary)
+                values (?, ?, ?, ?, ?) returning id
+                """, Long.class, wholesalerId, bankName, accountNo, accountHolder, primary);
+    }
+
     /** 여성>의류>상의 3단 체인을 baseId, baseId+1, baseId+2 로 넣고 리프 id 를 돌려준다. */
     public static long 카테고리_리프를_넣는다(JdbcTemplate jdbc, long baseId) {
         jdbc.update("insert into common.category (id, parent_id, name, depth) values (?, null, '여성', 1)", baseId);

@@ -2,6 +2,7 @@ package com.ondo.wholesale.retailgateway;
 
 import com.ondo.wholesale.common.error.ApiException;
 import com.ondo.wholesale.common.error.ErrorCode;
+import com.ondo.wholesale.notification.OrderNotifier;
 import com.ondo.wholesale.order.OrderStatusKey;
 import com.ondo.wholesale.order.domain.Order;
 import com.ondo.wholesale.order.domain.OrderItem;
@@ -27,6 +28,7 @@ import java.util.Set;
  * <p><b>재고를 안 건드린다.</b> 모자라도 그냥 받는다 (D-062). 재고 반영과 미송 생성은
  * 확정 시점의 수동 배분이 하고, 그건 채빈의 {@code AllocationWriter} 몫이다.
  * 여기가 하는 일은 <b>소매가 보낸 주문서를 도매 장부에 받아 적는 것</b>뿐이다.
+ * 같은 트랜잭션에서 그 도매처에 새 주문 알림 1건을 남긴다 (MUL-154).
  *
  * <p>도매처 하나당 주문 하나다. 소매의 통합 주문서는 도매처별로 잘려서 이 API 를 N 번
  * 부른다 — 원자성 단위가 도매처별 주문이라 한 도매처가 실패해도 나머지는 접수된다.
@@ -41,6 +43,7 @@ public class RetailGatewayOrderService {
 
     private final RetailGatewayOrderQuery query;
     private final OrderRepository orderRepository;
+    private final OrderNotifier orderNotifier;
 
     public RetailOrderCreatedResponse create(RetailOrderCreateRequest request) {
         validateShape(request);
@@ -78,6 +81,8 @@ public class RetailGatewayOrderService {
                 order.addItem(item.variantId(), item.qty(), snapshots.get(item.variantId()).salePrice()));
 
         orderRepository.save(order);
+        // 같은 트랜잭션이다 — 주문이 롤백되면 알림도 없다 (MUL-154)
+        orderNotifier.newOrder(order);
         return toResponse(order);
     }
 

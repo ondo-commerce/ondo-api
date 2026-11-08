@@ -1,5 +1,6 @@
 package com.ondo.wholesale.retailgateway;
 
+import com.ondo.wholesale.support.MasterDataFixture;
 import com.ondo.wholesale.support.PostgresTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +28,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p><b>절반이 "안 들어가는지" 를 보는 테스트다.</b> 접수는 도매 장부에 쓰는 일이라,
  * 남의 상품이나 바뀐 가격이 조용히 통과하면 되돌리기 어렵다.
+ *
+ * <p>접수와 한 트랜잭션에 생기는 새 주문 알림(MUL-154)도 여기서 본다. 알림 목록·읽음은
+ * {@code NotificationIntegrationTest} 몫이다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -164,6 +168,49 @@ class RetailGatewayOrderApiTest extends PostgresTestSupport {
     }
 
     @Test
+    @DisplayName("접수하면 그 도매처에 새 주문 알림이 1건 생긴다 (MUL-154)")
+    void 접수하면_새_주문_알림이_생긴다() throws Exception {
+        String body = mvc.perform(post("/api/retail-gateway/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(요청(7101, """
+                                { "variantId": 9211, "qty": 3, "expectedUnitPrice": 12500 },
+                                { "variantId": 9212, "qty": 2, "expectedUnitPrice": 12500 }
+                                """)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        long orderId = ((Number) com.jayway.jsonpath.JsonPath.read(body, "$.data.id")).longValue();
+
+        var 알림 = jdbc.queryForMap("SELECT * FROM wholesale.notification WHERE wholesaler_id = " + 도매처);
+        assertThat(알림.get("type")).isEqualTo("NEW_ORDER");
+        assertThat(알림.get("title")).isEqualTo("봄봄상회 새 주문");
+        // 첫 라인 + 나머지 줄 수 + 총 장수
+        assertThat(알림.get("body")).isEqualTo("빈티지 셔츠 블랙 / S 외 1건, 5장");
+        assertThat(알림.get("target_kind")).isEqualTo("ORDER");
+        assertThat(((Number) 알림.get("target_id")).longValue()).isEqualTo(orderId);
+        assertThat(알림.get("read_at")).isNull();
+        // 남의 도매처에는 안 간다
+        assertThat(count("SELECT count(*) FROM wholesale.notification WHERE wholesaler_id = " + 남의도매처)).isZero();
+    }
+
+    @Test
+    @DisplayName("접수가 막히면 알림도 없다 — 주문과 같은 트랜잭션이다 (MUL-154)")
+    void 막힌_접수는_알림을_안_남긴다() throws Exception {
+        접수(7102, 도매처, "{ \"variantId\": 9211, \"qty\": 1, \"expectedUnitPrice\": 12500 }");
+
+        // 같은 주문서 재전송(409)과 바뀐 가격(409) — 둘 다 알림이 더 생기면 안 된다
+        mvc.perform(post("/api/retail-gateway/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(요청(7102, "{ \"variantId\": 9211, \"qty\": 1, \"expectedUnitPrice\": 12500 }")))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/retail-gateway/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(요청(7103, "{ \"variantId\": 9211, \"qty\": 1, \"expectedUnitPrice\": 9999 }")))
+                .andExpect(status().isConflict());
+
+        assertThat(count("SELECT count(*) FROM wholesale.notification")).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("시즌이 끝난 상품은 409 다")
     void 게시가_내려간_상품은_막는다() throws Exception {
         mvc.perform(post("/api/retail-gateway/orders")
@@ -251,10 +298,11 @@ class RetailGatewayOrderApiTest extends PostgresTestSupport {
     // ── 조회 (MUL-98) ───────────────────────────────────────────
 
     @Test
-    @DisplayName("도매처 정보에 입금 계좌가 같이 온다")
+    @DisplayName("도매처 정보에 입금 계좌(주계좌)가 같이 온다")
     void 도매처_정보를_준다() throws Exception {
-        jdbc.update("UPDATE wholesale.wholesaler SET bank_name='국민', bank_account_no='123-456',"
-                + " bank_account_holder='무드온' WHERE id = " + 도매처);
+        // 소매에 나가는 건 주계좌다 (MUL-130) — 먼저 등록한 일반 계좌가 있어도
+        MasterDataFixture.계좌를_넣는다(jdbc, 도매처, "신한", "999-999", "부계좌", false);
+        MasterDataFixture.계좌를_넣는다(jdbc, 도매처, "국민", "123-456", "무드온", true);
 
         mvc.perform(get("/api/retail-gateway/wholesalers").param("ids", String.valueOf(도매처)))
                 .andExpect(status().isOk())
@@ -293,6 +341,25 @@ class RetailGatewayOrderApiTest extends PostgresTestSupport {
                 // 아무것도 안 나갔으니 전부 아직 못 받은 것이다
                 .andExpect(jsonPath("$.data[0].items[0].receivedQty").value(0))
                 .andExpect(jsonPath("$.data[0].items[0].backorderQty").value(3));
+    }
+
+    @Test
+    @DisplayName("되읽은 주문의 도매처 계좌는 주계좌다 — 계좌가 여럿이어도 주문이 불어나지 않는다")
+    void 되읽은_주문의_계좌는_주계좌다() throws Exception {
+        MasterDataFixture.계좌를_넣는다(jdbc, 도매처, "신한", "999-999", "부계좌", false);
+        MasterDataFixture.계좌를_넣는다(jdbc, 도매처, "국민", "123-456", "무드온", true);
+        MasterDataFixture.계좌를_넣는다(jdbc, 도매처, "기업", "888-888", "부계좌", false);
+        접수(7102, 도매처, "{ \"variantId\": 9211, \"qty\": 1, \"expectedUnitPrice\": 12500 }");
+
+        mvc.perform(get("/api/retail-gateway/orders")
+                        .param("retailerId", String.valueOf(소매처))
+                        .param("retailOrderIds", "7102"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].items.length()").value(1))
+                .andExpect(jsonPath("$.data[0].wholesaler.bankName").value("국민"))
+                .andExpect(jsonPath("$.data[0].wholesaler.bankAccountNo").value("123-456"))
+                .andExpect(jsonPath("$.data[0].wholesaler.bankAccountHolder").value("무드온"));
     }
 
     @Test
