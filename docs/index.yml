@@ -92,6 +92,12 @@ docs:
     layer: domain
     kind: record
 
+  - id: domain.decision.web-handoff-2026-11
+    path: docs/decisions/web-handoff-2026-11.md
+    title: 웹 인수인계(11/7) 서버 답 — 미송·포장·가용재고·검색·선수금 배분·오류 모양·알림/채팅 현황
+    layer: domain
+    kind: record
+
   - id: domain.design.notification
     path: docs/design/notification.md
     title: 소매 알림 · 입고 예정일 변경 연동 설계 — DB 위치 · 실패/재시도 (MUL-155)
