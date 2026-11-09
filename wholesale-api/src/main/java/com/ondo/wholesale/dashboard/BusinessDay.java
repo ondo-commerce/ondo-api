@@ -1,5 +1,6 @@
 package com.ondo.wholesale.dashboard;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
@@ -22,10 +23,17 @@ public final class BusinessDay {
 
     /** 지금이 속한 영업일의 시작 시각 — KST 낮 12시 이후면 오늘 12:00, 이전이면 어제 12:00. */
     public static OffsetDateTime startFor(OffsetDateTime now) {
-        ZonedDateTime kstNow = now.atZoneSameInstant(KST);
-        LocalDate day = kstNow.toLocalTime().isBefore(OPENING)
-                ? kstNow.toLocalDate().minusDays(1)
-                : kstNow.toLocalDate();
+        return startOf(dateOf(now.toInstant()));
+    }
+
+    /** 그 시각이 속한 영업일 D — KST 낮 12시 전이면 전날이다 (문의 지표 MUL-159 와 같은 경계). */
+    public static LocalDate dateOf(Instant at) {
+        ZonedDateTime kst = at.atZone(KST);
+        return kst.toLocalTime().isBefore(OPENING) ? kst.toLocalDate().minusDays(1) : kst.toLocalDate();
+    }
+
+    /** 영업일 D 의 시작 = D 12:00 KST. 끝(제외)은 {@code startOf(D + 1)}. */
+    public static OffsetDateTime startOf(LocalDate day) {
         return day.atTime(OPENING).atZone(KST).toOffsetDateTime();
     }
 }

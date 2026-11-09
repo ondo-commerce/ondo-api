@@ -91,8 +91,8 @@ A 안이면 판정이 도매 안에서 돈다 — **새 게이트웨이 조회�
 | 도매 | V16 | 도매 알림 (MUL-154) | 머지됨 |
 | 도매 | **V17** | `chat_room` · `chat_message`(intent, handoff_reason 칸 포함) · 멱등 키 (MUL-158) | 머지됨 |
 | 도매 | V18 | 소매 알림 `retail_notification` (MUL-155) | 머지됨 |
-| 도매 | V19 | 자동 답 설정 (MUL-159) | **예약** |
-| 도매 | V20 | `chat_room.context_listing_id` · `context_at` — 방 상품 문맥 (MUL-157) | 이 브랜치 |
+| 도매 | V19 | `chat_auto_reply_setting`(도매처당 한 행) · `chat_message_source_idx`(문의 지표) (MUL-159) | 이 PR 로 머지 — V20 뒤에 적용된다(`ChatAutoReplySettingSchemaTest`) |
+| 도매 | V20 | `chat_room.context_listing_id` · `context_at` — 방 상품 문맥 (MUL-157) | 머지됨 |
 | 소매 | V6 · V7 | 알림 · 채팅 | **반납** — A 안(도매 소유)으로 정해져 소매엔 두 테이블이 없다 |
 
 도매는 `spring.flyway.out-of-order: true` 라 번호 순서와 머지 순서가 달라도 적용된다. 번호만 겹치지 않으면 된다. (2026-11-08 갱신)
@@ -128,5 +128,22 @@ A 안이면 판정이 도매 안에서 돈다 — **새 게이트웨이 조회�
   `orders.retail_order_id`(소매 주문서 id) — 소매 주문서가 없는 주문의 미송·포장은 원본에서 뺀다. 미수 `exact=false` 는 조정·입금 무효 줄,
   나눠 출고, 취소 주문 출고 줄, 출고보다 큰 배정이 있을 때.
 - **방 열기** 승인된 도매처만(그 밖 404). 상호는 소매 DB `shop_name` 스냅샷.
-- **설정** `AutoReplySettingsSource` — 지금은 `DefaultAutoReplySettingsSource`(전부 켜짐). MUL-159 가 V19 테이블 구현으로 바꾼다.
+- **설정** `AutoReplySettingsSource` — MUL-159 에서 V19 테이블을 읽는 `AutoReplySettingsRepository` 로 바뀌었다(아래).
 - **소매 배지** `notificationUnreadCount.chats` = 게이트웨이 `unread-count`(내 방 unreadCount 합).
+
+## MUL-159 구현 메모 (2026-11-08)
+
+- **설정** `GET · PUT /api/wholesale/chat/auto-reply-settings` — `{enabled, intents{STOCK, BACKORDER, RECEIVABLE}}`.
+  V19 `chat_auto_reply_setting` 에 도매처당 한 행, 행이 없으면 전부 켜짐(기본값 행을 미리 깔지 않는다).
+  판정은 소매 보내기 트랜잭션 안에서 이 행을 읽는다(`AutoReplySettingsRepository` = `AutoReplySettingsSource`).
+  PUT 은 통째로 바꾼다 — 본문을 `Map` 으로 받아 불린만 받는다(`"true"`·`1`·`null` 은 400). 어긋난 칸을 모두
+  `errors[].field`(enabled | intents | intents.STOCK …)로 싣는다. 모르는 칸은 무시한다(목과 같다).
+- **꺼짐 판정** 판정기는 MUL-157 그대로다 — 꺼지면 OFF 넘김, intent 는 켜졌다면 나갔을 판정의 의도(재판정이 죽으면 null).
+  골든셋은 방의 `autoReply`·`intents` 를 `GoldenInquiryJudge` 가 같은 `AutoReplySettings` 로 바꿔 넣는다(H15, U08,
+  O01~O07, K15, B14, R15). 운영 경로는 DB 행 → 같은 레코드라 골든과 갈라지지 않는다.
+- **문의 지표** `GET /api/wholesale/chat/inquiry-stats?from&to` — 규칙 원본은 웹 `mocks/chat/inquiryStats.ts`.
+  출처 = 내 방 소매 TEXT, 결과 줄은 `source_sequence` 로 잇고 `kind`·`intent` 칸으로 분류한다(우선순위 자동 답 > 넘김 >
+  되묻기 > 결과 없음). 영업일 경계는 대시보드와 같은 `BusinessDay`(낮 12시 KST). asOf 는 µs 로 잘라 그 값으로 센다.
+  테스트는 웹 fixture F1~F17 을 DB 에 심어 목 테스트가 손으로 센 숫자와 비교한다(`InquiryStatsIntegrationTest`).
+- **시각** `startAt`·`endAt`·`asOf` 는 다른 응답과 같이 UTC(`…Z`)로 낸다. 웹 목은 `+09:00` — 스펙은 오프셋만 요구한다.
+- **배지** `notificationUnreadCount.chatsNeedingReply` = 방 목록 NEEDS_REPLY 필터와 같은 SQL 조건(`ChatRoomRepository.NEEDS_REPLY`).

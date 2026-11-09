@@ -33,6 +33,13 @@ public class ChatRoomRepository {
             r.context_listing_id, r.context_at
             """;
 
+    /**
+     * needsReply = 열린 넘김이 있거나 마지막 메시지가 RETAILER TEXT ({@code ChatQueryService} 와 같은 정의).
+     * {@code r} = chat_room, {@code m} = 마지막 메시지(left join, 없으면 NULL).
+     */
+    private static final String NEEDS_REPLY =
+            "(r.open_handoff_sequence is not null or (m.sender = 'RETAILER' and m.kind = 'TEXT'))";
+
     private final JdbcClient jdbc;
 
     /**
@@ -160,7 +167,7 @@ public class ChatRoomRepository {
             sql.append(" and exists (select 1 from wholesale.chat_message u where u.room_id = r.id")
                     .append(" and u.sender = 'RETAILER' and u.sequence > r.wholesaler_last_read_sequence)");
         } else if (query.filter() == ChatRoomFilter.NEEDS_REPLY) {
-            sql.append(" and (r.open_handoff_sequence is not null or (m.sender = 'RETAILER' and m.kind = 'TEXT'))");
+            sql.append(" and ").append(NEEDS_REPLY);
         }
         if (query.cursorRoomId() != null) {
             sql.append(" and (r.last_activity_at, r.id) < (:cursorAt, :cursorId)");
@@ -177,6 +184,18 @@ public class ChatRoomRepository {
             spec = spec.param("cursorAt", query.cursorActivityAt()).param("cursorId", query.cursorRoomId());
         }
         return spec.query(ChatRoomRepository::summary).list();
+    }
+
+    /**
+     * 헤더 배지 {@code chatsNeedingReply} (MUL-159) — 내 방 중 needsReply 인 방 수. 방 목록 NEEDS_REPLY 필터와 같은 조건이다.
+     */
+    public int countNeedsReply(long wholesalerId) {
+        return jdbc.sql("select count(*) from wholesale.chat_room r"
+                        + " left join wholesale.chat_message m on m.id = r.last_message_id"
+                        + " where r.wholesaler_id = :wholesalerId and " + NEEDS_REPLY)
+                .param("wholesalerId", wholesalerId)
+                .query(Integer.class)
+                .single();
     }
 
     /* --- 소매 쪽 (MUL-157) — 늘 retailer_id 로 거른다 ------------------------------------ */

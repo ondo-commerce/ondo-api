@@ -139,11 +139,11 @@
 | 도매 알림 3 (`notifications` · `markNotificationsRead` · `notificationUnreadCount`) | 구현. 새 주문 알림만 생성 | MUL-154 |
 | 소매 알림 3 | 구현. 입고 예정일 변경 알림. 도매가 저장하고 소매는 gateway 로 위임 | MUL-155 |
 | 도매 채팅 5 (`chatRooms` · `chatRoom` · `chatMessages` · `sendChatMessage` · `markChatRead`) | 구현. 자동 답은 아직 없어 `generatedMessages` 는 빈 배열 | MUL-158 |
-| 소매 채팅 6 + 자동 답 판정 | 남음. 골든셋 v7 167단계 통과가 완료 조건 | MUL-157 |
-| 자동 답 설정 2 · 문의 지표 1 | 남음 | MUL-159 |
+| 소매 채팅 6 + 자동 답 판정 | 구현. 골든셋 v7 167단계 + 정규화 17줄 통과 | MUL-157 |
+| 자동 답 설정 2 (`autoReplySettings` · `updateAutoReplySettings`) · 문의 지표 1 (`inquiryStats`) | 구현. 설정은 V19 도매처당 한 행(없으면 전부 켜짐), 지표는 영업일(낮 12시 KST) 집계 | MUL-159 |
 | 이미지 업로드 1 | 남음 (저장소 미정) | — |
 
 알아 둘 것:
-- 알림 unread-count 의 채팅 수(도매 `chatsNeedingReply`, 소매 `chats`)는 지금 항상 0 이다. MUL-157 · MUL-159 에서 채운다.
+- 알림 unread-count 의 채팅 수: 도매 `chatsNeedingReply` = 방 목록 `needsReply` 방 수(MUL-159), 소매 `chats` = 내 방 unreadCount 합(MUL-157). 더는 0 고정이 아니다.
 - 시각은 UTC(`...Z`)로 내보낸다. 웹 목은 `+09:00` 이지만 스펙은 오프셋만 요구한다.
 - 알림 · 채팅 모두 실시간은 polling 이다 (스펙대로). 커서는 불투명 문자열이니 그대로 돌려보내면 된다.

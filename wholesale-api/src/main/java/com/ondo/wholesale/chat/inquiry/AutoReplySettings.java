@@ -3,8 +3,8 @@ package com.ondo.wholesale.chat.inquiry;
 import com.ondo.wholesale.chat.domain.ChatIntent;
 
 /**
- * 자동 답 설정 (MUL-157, 계약 {@code AutoReplySettings}). 설정 저장·화면은 MUL-159 다 — 그 전까지 판정은
- * {@link #DEFAULTS}(전부 켜짐)를 읽는다({@link AutoReplySettingsSource}).
+ * 자동 답 설정 (MUL-157, 계약 {@code AutoReplySettings}). 저장은 V19 {@code chat_auto_reply_setting}(MUL-159) —
+ * 저장한 적이 없는 도매처는 {@link #DEFAULTS}(전부 켜짐)다({@link AutoReplySettingsSource}).
  *
  * @param enabled 전체 켜짐. 꺼져도 판정은 의도를 읽어 OFF 넘김 줄에 싣는다(문의 지표용)
  */

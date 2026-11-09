@@ -1,5 +1,6 @@
 package com.ondo.wholesale.notification;
 
+import com.ondo.wholesale.chat.repository.ChatRoomRepository;
 import com.ondo.wholesale.common.error.ApiException;
 import com.ondo.wholesale.common.error.ErrorCode;
 import com.ondo.wholesale.notification.dto.MarkNotificationsReadResponse;
@@ -26,6 +27,7 @@ public class NotificationService {
     static final int PAGE_MAX = 100;
 
     private final NotificationRepository repository;
+    private final ChatRoomRepository chatRooms;
 
     @Transactional(readOnly = true)
     public NotificationPageResponse list(long wholesalerId, String cursor, Integer size) {
@@ -48,11 +50,10 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public NotificationUnreadCountResponse unreadCount(long wholesalerId) {
-        // 도매 채팅이 아직 없다. 채팅 작업이 needsReply 방 수로 채운다
-        int chatsNeedingReply = 0;
+        // 방 목록 needsReply 와 같은 정의(MUL-159). 알림과 같은 읽기 트랜잭션에서 센다
         return new NotificationUnreadCountResponse(
                 repository.countUnread(wholesalerId),
-                chatsNeedingReply,
+                chatRooms.countNeedsReply(wholesalerId),
                 repository.latestId(wholesalerId).orElse(null));
     }
 
