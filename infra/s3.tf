@@ -7,9 +7,8 @@
 #   상품 이미지    도매가 올리고 소매가 본다.   나중에 공개 읽기로 열 수 있다
 #   증빙 서류      소매가 올리고 운영자만 본다.  절대 안 연다
 #
-# ⚠️ 지금은 둘 다 안 쓰인다. 앱이 LocalFileStorage 로 컨테이너 안에 쓰고 있다.
-#    S3 구현체로 갈아끼우는 건 배포 전 할 일이다(MUL-77 「배포 전에 닫을 것」).
-#    버킷은 안 쓰면 요금이 없어서 미리 만들어 둔다.
+# 상품 이미지 버킷은 시드(V903)의 상품 사진을 서빙한다. 도매 화면의 업로드는 아직 없다.
+# 증빙 서류 버킷은 소매 가입이 쓴다(MUL-100).
 # ─────────────────────────────────────────────────────────────
 
 # 버킷 이름은 전 세계에서 유일해야 한다. 계정 번호를 붙여 겹치지 않게 한다
@@ -33,15 +32,36 @@ resource "aws_s3_bucket" "documents" {
 
 # ── 둘 다 닫아 둔다 ──────────────────────────────────────────
 #
-# 상품 이미지도 지금은 닫는다. 여는 건 실제로 이미지를 서빙할 때 정한다 —
-# 버킷을 통째로 여는 것 말고 CloudFront 나 presigned URL 로 가는 길도 있어서,
-# 필요해질 때 고르는 게 맞다. 지금 열어두면 쓰지도 않는 게 열려 있게 된다.
+# 상품 이미지는 소매 마켓의 <img> 가 바로 읽는다. 그래서 listings/ 아래의 읽기만 연다.
+# ACL 은 계속 막는다 — 공개 여부는 아래 버킷 정책 한 곳에서만 정한다.
+# 시연(최종 평가) 규모라 CloudFront 없이 S3 주소를 그대로 쓴다. 트래픽이 생기면 앞에 붙인다.
 resource "aws_s3_bucket_public_access_block" "listing_images" {
   bucket                  = aws_s3_bucket.listing_images.id
   block_public_acls       = true
-  block_public_policy     = true
+  block_public_policy     = false
   ignore_public_acls      = true
-  restrict_public_buckets = true
+  restrict_public_buckets = false
+}
+
+data "aws_iam_policy_document" "listing_images_public_read" {
+  statement {
+    sid       = "PublicReadListingImages"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.listing_images.arn}/listings/*"]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "listing_images_public_read" {
+  bucket = aws_s3_bucket.listing_images.id
+  policy = data.aws_iam_policy_document.listing_images_public_read.json
+
+  # 정책이 공개 정책이라, 차단을 먼저 풀어야 들어간다
+  depends_on = [aws_s3_bucket_public_access_block.listing_images]
 }
 
 resource "aws_s3_bucket_public_access_block" "documents" {

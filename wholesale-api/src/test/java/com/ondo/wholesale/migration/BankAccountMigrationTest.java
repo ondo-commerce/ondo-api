@@ -89,7 +89,7 @@ class BankAccountMigrationTest extends PostgresTestSupport {
     }
 
     @Test
-    void dev_시드는_도매처_101에서_103에_주계좌를_하나씩_넣는다() {
+    void dev_시드는_도매처_101에서_110에_주계좌를_하나씩_넣는다() {
         JdbcTemplate jdbc = 빈_DB를_만든다();
         flyway(jdbc, "latest", "classpath:db/migration", "classpath:db/seed").migrate();
 
@@ -97,7 +97,7 @@ class BankAccountMigrationTest extends PostgresTestSupport {
                 "select wholesaler_id, count(*) as n from wholesale.bank_account"
                         + " where is_primary group by wholesaler_id order by wholesaler_id");
         assertThat(primaries).extracting(r -> ((Number) r.get("wholesaler_id")).longValue())
-                .containsExactly(101L, 102L, 103L);
+                .containsExactly(101L, 102L, 103L, 104L, 105L, 106L, 107L, 108L, 109L, 110L);   // V902 + V903
         assertThat(primaries).allSatisfy(r -> assertThat(((Number) r.get("n")).intValue()).isEqualTo(1));
     }
 
