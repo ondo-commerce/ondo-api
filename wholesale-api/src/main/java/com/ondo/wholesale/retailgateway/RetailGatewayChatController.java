@@ -3,6 +3,7 @@ package com.ondo.wholesale.retailgateway;
 import com.ondo.wholesale.chat.dto.ChatReadResult;
 import com.ondo.wholesale.chat.dto.MarkChatReadRequest;
 import com.ondo.wholesale.chat.dto.SendChatMessageRequest;
+import com.ondo.wholesale.chat.service.RetailChatLlmSend;
 import com.ondo.wholesale.chat.service.RetailChatService;
 import com.ondo.wholesale.common.error.ApiException;
 import com.ondo.wholesale.common.response.ApiResponse;
@@ -50,6 +51,7 @@ public class RetailGatewayChatController {
     private static final int MAX_LIMIT = 101;
 
     private final RetailChatService service;
+    private final RetailChatLlmSend llmSend;
 
     @Operation(summary = "소매 채팅방 목록 (소매 백엔드 → 도매)", description = """
             그 소매처 방만, `lastActivityAt desc, roomId desc`. keyset — `beforeMicros`(epoch µs)·`beforeId` 는 직전 장
@@ -120,7 +122,7 @@ public class RetailGatewayChatController {
                                              @RequestHeader(value = "Idempotency-Key", required = false)
                                              String idempotencyKey,
                                              @RequestBody SendChatMessageRequest request) {
-        RetailChatService.SendOutcome outcome = service.send(retailerId, roomId, idempotencyKey, request);
+        RetailChatService.SendOutcome outcome = llmSend.send(retailerId, roomId, idempotencyKey, request);
         return ResponseEntity.status(outcome.replayed() ? HttpStatus.OK : HttpStatus.CREATED).body(outcome.result());
     }
 
