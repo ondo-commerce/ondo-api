@@ -4,6 +4,7 @@ import com.ondo.wholesale.chat.domain.ChatGeneratedBy;
 import com.ondo.wholesale.chat.domain.ChatHandoffReason;
 import com.ondo.wholesale.chat.domain.ChatIntent;
 import com.ondo.wholesale.chat.dto.ChatAutoReply.Detail;
+import com.ondo.wholesale.chat.dto.ChatInquiry;
 import com.ondo.wholesale.chat.inquiry.InquiryDecision.BackorderAnswer;
 import com.ondo.wholesale.chat.inquiry.InquiryDecision.BackorderClarify;
 import com.ondo.wholesale.chat.inquiry.InquiryDecision.Handoff;
@@ -13,6 +14,7 @@ import com.ondo.wholesale.chat.inquiry.InquiryInput.Backorder;
 import com.ondo.wholesale.chat.inquiry.InquiryInput.Listing;
 import com.ondo.wholesale.chat.inquiry.InquiryInput.Packing;
 import com.ondo.wholesale.chat.inquiry.InquiryInput.Receivable;
+import com.ondo.wholesale.chat.inquiry.InquiryInput.Variant;
 import com.ondo.wholesale.chat.repository.ChatMessageRepository.NewMessage;
 
 import java.text.Normalizer;
@@ -73,7 +75,8 @@ public final class LlmInquiry {
 
         InquiryDecision amended;
         try {
-            amended = InquiryDecider.decide(copy(cached, cached.body() + " " + hint,
+            ChatInquiry chip = reading.intent() == ChatIntent.OTHER ? onlyChoice(cached, open, size) : null;
+            amended = InquiryDecider.decide(copy(cached, chip, cached.body() + " " + hint,
                     cached.backorders(), cached.receivables(), cached.packings()));
         } catch (RuntimeException e) {
             return Decided.ruleOnly(rule);
@@ -144,14 +147,33 @@ public final class LlmInquiry {
         return InquiryReading.tidy(productName).equals(InquiryReading.tidy(listing.title()));
     }
 
-    /** 한 문의 안에서 규칙 판정과 보완 판정이 같은 값 또는 같은 조회 실패를 본다. */
-    public static InquiryInput withCachedSources(InquiryInput input) {
-        return copy(input, input.body(), once(input.backorders()), once(input.receivables()), once(input.packings()));
+    /**
+     * 판정기는 보기의 색이 둘 이상이면 사이즈만으로 고르지 않는다. 본문에 못 읽은 색 낱말("빨강 L")이 있을 수 있어서다.
+     * 짧은 답은 사이즈 말고 다른 낱말이 없으니, 열린 되묻기 보기 중 그 사이즈가 하나뿐이면 그 보기를 칩으로 고른 것과 같다.
+     */
+    private static ChatInquiry onlyChoice(InquiryInput input, InquiryDecider.OpenClarify open, String size) {
+        Listing listing = input.catalog().find(open.listingId());
+        List<Variant> shown = listing == null ? List.of() : listing.variants().stream()
+                .filter(v -> open.variantIds().contains(v.variantId())).toList();
+        // 보여 준 보기 중 지금 못 찾는 옵션(삭제, 다른 상품)이 있으면 그 사이즈가 보기에서 하나뿐이었는지 알 수 없다
+        if (!shown.stream().map(Variant::variantId).toList().containsAll(open.variantIds())) {
+            return null;
+        }
+        List<Long> hits = shown.stream().filter(v -> v.size().equals(size)).map(Variant::variantId).toList();
+        return hits.size() == 1
+                ? new ChatInquiry(ChatIntent.STOCK, open.listingId(), hits.getFirst(), null, null, null) : null;
     }
 
-    private static InquiryInput copy(InquiryInput input, String body, Supplier<List<Backorder>> backorders,
-                                     Supplier<List<Receivable>> receivables, Supplier<List<Packing>> packings) {
-        return new InquiryInput(body, input.inquiry(), input.now(), input.today(), input.wholesalerId(),
+    /** 한 문의 안에서 규칙 판정과 보완 판정이 같은 값 또는 같은 조회 실패를 본다. */
+    public static InquiryInput withCachedSources(InquiryInput input) {
+        return copy(input, input.inquiry(), input.body(), once(input.backorders()), once(input.receivables()),
+                once(input.packings()));
+    }
+
+    private static InquiryInput copy(InquiryInput input, ChatInquiry inquiry, String body,
+                                     Supplier<List<Backorder>> backorders, Supplier<List<Receivable>> receivables,
+                                     Supplier<List<Packing>> packings) {
+        return new InquiryInput(body, inquiry, input.now(), input.today(), input.wholesalerId(),
                 input.retailerId(), input.settings(), input.context(), input.history(), input.catalog(),
                 backorders, receivables, packings);
     }

@@ -409,6 +409,80 @@ class LlmInquiryTest {
                 validated(body, "STOCK", "FREE", "프리", ""));
     }
 
+    /** 시드 2001 모양: 색이 둘(레드 S/M/L, 네이비 S/M). 색 하나짜리 상품은 "하나뿐인 칸은 읽은 것으로 친다" 예외로 통과해 버그를 못 잡는다. */
+    private static final Variant TWO_RED_S = new Variant(71, "레드", "S", 10, 0, true);
+    private static final Variant TWO_RED_M = new Variant(72, "레드", "M", 10, 0, true);
+    private static final Variant TWO_RED_L = new Variant(73, "레드", "L", -15, 0, true);
+    private static final Variant TWO_NAVY_S = new Variant(74, "네이비", "S", 10, 0, true);
+    private static final Variant TWO_NAVY_M = new Variant(75, "네이비", "M", 10, 0, true);
+    private static final Listing TWO_COLORS = new Listing(20, 1, "빈티지 셔츠", true,
+            List.of(TWO_RED_S, TWO_RED_M, TWO_RED_L, TWO_NAVY_S, TWO_NAVY_M));
+
+    @Test
+    void 색이_둘인_상품에서_열린_되묻기에_사이즈가_한_옵션뿐이면_그_옵션으로_답한다() {
+        String body = "라지로 주세요";
+        var result = LlmInquiry.decide(openStockClarify(body, TWO_COLORS), validated(body, "OTHER", "L", "라지", ""));
+        assertThat(result.decision()).isInstanceOfSatisfying(StockAnswer.class,
+                a -> assertThat(a.variant()).isEqualTo(TWO_RED_L));
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+        assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.ADOPTED);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"엠이요,M,엠", "S요,S,S"})
+    void 색이_둘인_상품에서_사이즈가_두_옵션이면_규칙_결과를_쓴다(String body, String size, String evidence) {
+        InquiryInput input = openStockClarify(body, TWO_COLORS);
+        assertRuleResult(input, validated(body, "OTHER", size, evidence, ""));
+        assertThat(InquiryDecider.decide(input)).isEqualTo(new Handoff(ChatHandoffReason.NO_INTENT, null));
+    }
+
+    @Test
+    void 색이_둘인_상품에서도_짧은_답이_아니면_사이즈를_붙이지_않는다() {
+        String body = "엘 사이즈 기장 어떻게 되나요?";
+        assertRuleResult(openStockClarify(body, TWO_COLORS), validated(body, "OTHER", "L", "엘", ""));
+    }
+
+    @Test
+    void 색이_둘인_상품에서_그_사이즈_옵션이_비공개면_재고_답이_아니다() {
+        var hidden = new Variant(73, "레드", "L", -15, 0, false);
+        var listing = new Listing(20, 1, "빈티지 셔츠", true,
+                List.of(TWO_RED_S, TWO_RED_M, hidden, TWO_NAVY_S, TWO_NAVY_M));
+        String body = "라지로 주세요";
+        var result = LlmInquiry.decide(openStockClarify(body, listing), validated(body, "OTHER", "L", "라지", ""));
+        assertThat(result.decision()).isNotInstanceOf(StockAnswer.class);
+    }
+
+    /** 현재 동작을 고정한다. 규칙이 읽지 못하는 한글 사이즈를 STOCK 읽기가 어떻게 보완하는지. */
+    @Test
+    void 현재_동작_색이_둘인_상품에서_STOCK_읽기_라지_남았어요() {
+        String body = "라지 남았어요?";
+        InquiryInput input = input(body, CONTEXT, TWO_COLORS, AutoReplySettings.DEFAULTS);
+        var result = LlmInquiry.decide(input, validated(body, "STOCK", "L", "라지", ""));
+        assertThat(result.decision()).isInstanceOf(StockClarify.class).isEqualTo(result.rule());
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+        assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.SAME);
+    }
+
+    /** 보기에 있던 옵션이 지금 카탈로그에서 안 보이면 "L이 하나뿐"이라 단정하지 않는다. */
+    @Test
+    void 보기의_옵션이_카탈로그에서_빠져_있으면_칩_없이_규칙_결과를_쓴다() {
+        var navyL = new Variant(76, "네이비", "L", 10, 0, true);
+        var full = new Listing(20, 1, "빈티지 셔츠", true,
+                List.of(TWO_RED_S, TWO_RED_M, TWO_RED_L, TWO_NAVY_S, TWO_NAVY_M, navyL));
+        var withoutNavyL = new Listing(20, 1, "빈티지 셔츠", true,
+                List.of(TWO_RED_S, TWO_RED_M, TWO_RED_L, TWO_NAVY_S, TWO_NAVY_M));
+        String body = "라지로 주세요";
+        var opened = openStockClarify(body, full);
+        var reading = validated(body, "OTHER", "L", "라지", "");
+        // 대조: 네이비 L을 빼지 않으면 L이 둘이라 규칙 결과
+        assertRuleResult(opened, reading);
+        var narrowed = new InquiryInput(opened.body(), opened.inquiry(), opened.now(), opened.today(),
+                opened.wholesalerId(), opened.retailerId(), opened.settings(), opened.context(), opened.history(),
+                id -> withoutNavyL, opened.backorders(), opened.receivables(), opened.packings());
+        assertRuleResult(narrowed, reading);
+        assertThat(InquiryDecider.decide(narrowed)).isEqualTo(new Handoff(ChatHandoffReason.NO_INTENT, null));
+    }
+
     private static InquiryInput openStockClarify(String body, Listing listing) {
         var first = input("재고 있어요?", CONTEXT, listing, AutoReplySettings.DEFAULTS);
         var line = InquiryLines.generated(InquiryDecider.decide(first), 1, NOW).getFirst();

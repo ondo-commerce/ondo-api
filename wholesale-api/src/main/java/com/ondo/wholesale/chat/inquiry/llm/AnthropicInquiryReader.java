@@ -59,6 +59,8 @@ public class AnthropicInquiryReader implements InquiryReader, AutoCloseable {
               사장님이나 사람을 찾는 말, 입금했다는 알림, 인사말, 여러 가지를 한 번에 묻는 문장은 OTHER다.
 
             uncertain: 위 넷 중 어느 것인지 애매하면 true, 분명하면 false.
+              사이즈나 색만 짧게 말한 답(예: 엘이요, 스몰로 할게요)은 앞 질문을 몰라도 OTHER이고 uncertain은 false다.
+              size, sizeEvidence, color는 그대로 채운다.
             size: 문장에 나온 사이즈. XS, S, M, L, XL, 2XL, FREE 중 하나이고 없으면 NONE.
               한글로 쓴 사이즈도 읽는다. 엠과 미디움은 M, 라지와 엘은 L, 엑스라지는 XL, 투엑스라지는 2XL, 프리는 FREE.
             sizeEvidence: size를 정한 글자를 문장에서 그대로 옮긴다(예: 엠, M). size가 NONE이면 빈 문자열.
