@@ -56,6 +56,50 @@ class InquiryReadingTest {
                 "STOCK", false, "NONE", "", "", "", "", null))).isNull();
     }
 
+    /** 리뷰 결함 C: 추출한 상품명이 본문에 없으면 읽기를 버려야 한다. 기존 LlmInquiryTest의 "셔츠" 읽기와 충돌한다. */
+    @Test
+    void 상품명이_본문에_없으면_읽기를_버린다() {
+        assertThat(InquiryReading.validate("레드 M 구할 수 있을까요?", withProduct("셔츠"))).isNull();
+    }
+
+    @Test
+    void 상품명이_본문에_있거나_비어_있으면_받는다() {
+        assertThat(InquiryReading.validate("셔츠 레드 M 구할 수 있을까요?", withProduct("셔츠"))).isNotNull();
+        assertThat(InquiryReading.validate("레드 M 구할 수 있을까요?", withProduct(""))).isNotNull();
+    }
+
+    /** 리뷰 결함 D: 한글 별칭은 낱말 안의 부분 문자열이면 근거가 아니다. */
+    @ParameterizedTest
+    @CsvSource({"레드 엑스-라지 구할 수 있을까요?,L,라지", "사라지기 전에 레드 구할 수 있을까요?,L,라지",
+            "프리미엄 레드 구할 수 있을까요?,FREE,프리", "프리오더 레드 구할 수 있을까요?,FREE,프리"})
+    void 한글_별칭이_다른_낱말의_일부면_근거로_치지_않는다(String body, String size, String evidence) {
+        assertThat(InquiryReading.validate(body, fields("STOCK", false, size, evidence))).isNull();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"레드 라지 있어요?,L,라지", "프리 사이즈 있어요?,FREE,프리"})
+    void 낱말로_쓰인_한글_별칭은_근거로_친다(String body, String size, String evidence) {
+        assertThat(InquiryReading.validate(body, fields("STOCK", false, size, evidence))).isNotNull();
+    }
+
+    /** 규칙 R2: 한글 사이즈 근거는 공백과 문장부호를 지우지 않은 본문에서 독립 토큰이어야 한다. 하이픈이 붙으면 거부. */
+    @ParameterizedTest
+    @CsvSource({"레드 엑스-라지 있어요?,XL,엑스라지", "레드 엑스-라지 있어요?,L,라지", "프리-오더 레드 있어요?,FREE,프리",
+            "프리-미엄 레드 있어요?,FREE,프리", "레드 엠-사이즈 있어요?,M,엠", "레드 라지-엘 있어요?,L,라지"})
+    void 한글_사이즈_근거에_하이픈이나_글자가_붙으면_버린다(String body, String size, String evidence) {
+        assertThat(InquiryReading.validate(body, fields("STOCK", false, size, evidence))).isNull();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"엠이요,M,엠", "라지로 주세요,L,라지", "M이요,M,M", "엠 사이즈요,M,엠", "레드 엠 사이즈 있어요?,M,엠"})
+    void 독립_토큰과_정한_조사가_붙은_근거는_받는다(String body, String size, String evidence) {
+        assertThat(InquiryReading.validate(body, fields("OTHER", false, size, evidence))).isNotNull();
+    }
+
+    private static InquiryReading.Fields withProduct(String productName) {
+        return new InquiryReading.Fields("STOCK", false, "M", "M", "", productName, "", false);
+    }
+
     private static InquiryReading.Fields fields(String intent, Boolean uncertain, String size, String evidence) {
         return new InquiryReading.Fields(intent, uncertain, size, evidence, "", "", "", false);
     }

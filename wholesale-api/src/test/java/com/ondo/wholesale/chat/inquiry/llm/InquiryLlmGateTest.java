@@ -270,7 +270,7 @@ class InquiryLlmGateTest {
     void 미수_풀기가_꺼져_있어도_다른_칸은_그대로다() {
         Fields fields = new Fields("STOCK", false, "M", "M", "", "코튼 팬츠", "지난주", true);
 
-        InquiryReading reading = gate(b -> ok(fields)).read(1, BODY, LONG);
+        InquiryReading reading = gate(b -> ok(fields)).read(1, "코튼 팬츠 레드 M 구할 수 있을까요?", LONG);
 
         assertThat(reading).isNotNull();
         assertThat(reading.intent()).isEqualTo(ChatIntent.STOCK);

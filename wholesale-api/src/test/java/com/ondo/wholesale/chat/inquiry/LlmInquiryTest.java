@@ -89,7 +89,7 @@ class LlmInquiryTest {
     @Test
     void 놓친_재고_문의와_한글_사이즈_되묻기는_서버_구간으로_답한다() {
         for (String body : List.of("레드 M 구할 수 있을까요?", "레드 엠 사이즈 있어요?")) {
-            var result = LlmInquiry.decide(input(body), reading(STOCK, "M", "셔츠"));
+            var result = LlmInquiry.decide(input(body), reading(STOCK, "M", ""));
             assertThat(result.decision()).isInstanceOfSatisfying(StockAnswer.class, a -> {
                 assertThat(a.variant()).isEqualTo(RED_M);
                 assertThat(a.band()).isEqualTo(StockBand.UNDER_50);
@@ -235,6 +235,187 @@ class LlmInquiryTest {
     @CsvSource({"재고,STOCK", "미송,BACKORDER", "미수,RECEIVABLE"})
     void 서버가_붙이는_낱말을_규칙이_그_유형으로_읽는다(String word, ChatIntent intent) {
         assertThat(InquiryDecider.decide(input(word)).intent()).isEqualTo(intent);
+    }
+
+    /** 리뷰 결함 A: 열린 재고 되묻기가 없으면 OTHER 읽기의 사이즈를 붙여 재고 규칙을 새로 켜지 않는다. */
+    @ParameterizedTest
+    @ValueSource(strings = {"엠 사이즈 기장 어떻게 되나요?", "엠으로 바꿔 주실 수 있나요?",
+            "이 셔츠 엠 사이즈 값이 어떻게 되나요?", "레드 엠 기장 어떻게 되나요?"})
+    void 열린_되묻기가_없으면_기타_읽기의_사이즈를_붙이지_않는다(String body) {
+        InquiryInput input = input(body);
+        var result = LlmInquiry.decide(input, reading(OTHER, "M", ""));
+        assertThat(result.decision()).isEqualTo(InquiryDecider.decide(input));
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.RULE);
+    }
+
+    @Test
+    void 사이즈만_붙이는_갈래는_열린_재고_되묻기가_있을_때_채택한다() {
+        var result = LlmInquiry.decide(openStockClarify("엠이요", LISTING), reading(OTHER, "M", ""));
+        assertThat(result.decision()).isInstanceOfSatisfying(StockAnswer.class,
+                a -> assertThat(a.variant()).isEqualTo(RED_M));
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+        var stock = LlmInquiry.decide(openStockClarify("엠이요", LISTING), reading(STOCK, "M", ""));
+        assertThat(stock.decision()).isInstanceOf(StockAnswer.class);
+    }
+
+    /** 리뷰 결함 B: 상품 이름은 한 낱말만 겹쳐서는 같은 상품이 아니다. */
+    @Test
+    void 다른_상품_이름은_셔츠_한_낱말만_겹쳐도_문맥_상품으로_답하지_않는다() {
+        InquiryInput input = input("린넨 셔츠 레드 M 구할 수 있을까요?");
+        var result = LlmInquiry.decide(input, reading(STOCK, "M", "린넨 셔츠"));
+        assertThat(result.decision()).isEqualTo(new Handoff(ChatHandoffReason.NO_INTENT, null));
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.RULE);
+    }
+
+    @Test
+    void 문맥_상품의_제목과_같은_이름만_채택한다() {
+        String body = "빈티지 셔츠 레드 M 구할 수 있을까요?";
+        var result = LlmInquiry.decide(input(body), validated(body, "STOCK", "M", "M", "빈티지 셔츠"));
+        assertThat(result.decision()).isInstanceOf(StockAnswer.class);
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+        // 제목의 앞부분만 적은 이름은 버린다
+        assertRuleResult(input(body), validated(body, "STOCK", "M", "M", "빈티지"));
+    }
+
+    /** 리뷰 결함 E: 열린 되묻기의 상품과 지금 문맥 상품이 다르면(대조를 지나는 입력) 규칙 결과를 쓴다. */
+    @Test
+    void 열린_되묻기의_상품과_방_문맥_상품이_다르면_규칙_결과를_쓴다() {
+        var blueM = new Variant(41, "블루", "M", 10, 0, true);
+        var listingA = new Listing(20, 1, "빈티지 셔츠", true, List.of(RED_M, blueM));
+        var listingB = new Listing(21, 1, "스트라이프 셔츠", true,
+                List.of(new Variant(51, "레드", "M", 10, 0, true)));
+        InquiryInput first = input("재고 있어요?", CONTEXT, listingA, AutoReplySettings.DEFAULTS);
+        var line = InquiryLines.generated(InquiryDecider.decide(first), 1, NOW).getFirst();
+        var history = List.of(new HistoryItem(2, ChatSender.WHOLESALER, ChatMessageKind.CLARIFY, NOW,
+                ChatAutoReply.of(STOCK, 1L, line.autoReply()), null));
+        InquiryInput followup = input("엠이요", new RoomContext(21, NOW), history,
+                id -> id == 21 ? listingB : listingA, AutoReplySettings.DEFAULTS, List::of, List::of, List::of);
+        var result = LlmInquiry.decide(followup, reading(STOCK, "M", ""));
+        assertThat(result.decision()).isEqualTo(InquiryDecider.decide(followup));
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.RULE);
+    }
+
+    /** 아래 새 테스트는 InquiryReading을 직접 만들지 않고 validate를 거친 읽기로 decide까지 간다(실제 경로). */
+    private static InquiryReading validated(String body, String intent, String size, String evidence,
+                                            String productName) {
+        return InquiryReading.validate(body,
+                new InquiryReading.Fields(intent, false, size, evidence, "", productName, "", false));
+    }
+
+    private static void assertRuleResult(InquiryInput input, InquiryReading reading) {
+        var result = LlmInquiry.decide(input, reading);
+        assertThat(result.decision()).isEqualTo(InquiryDecider.decide(input));
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.RULE);
+    }
+
+    /** 규칙 R3 / 지적 1: 열린 재고 되묻기 중이어도 긴 문장에는 사이즈만 붙이지 않는다. */
+    @Test
+    void 열린_되묻기_중에도_사이즈_말고_다른_질문이_섞이면_규칙_결과를_쓴다() {
+        String body = "엠 사이즈 기장 어떻게 되나요?";
+        assertRuleResult(openStockClarify(body, LISTING), validated(body, "OTHER", "M", "엠", ""));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"엠이요,M,엠,31", "라지로 주세요,L,라지,32", "엠 사이즈요,M,엠,31", "엠이요?,M,엠,31", "엠이요~,M,엠,31",
+            "엠 사이즈요.,M,엠,31"})
+    void 열린_되묻기에_짧게_한글_사이즈만_답하면_validate를_거친_읽기가_채택된다(String body, String size, String evidence,
+                                                         long variantId) {
+        var reading = validated(body, "OTHER", size, evidence, "");
+        assertThat(reading).isNotNull();
+        var result = LlmInquiry.decide(openStockClarify(body, LISTING), reading);
+        assertThat(result.decision()).isInstanceOfSatisfying(StockAnswer.class,
+                a -> assertThat(a.variant().variantId()).isEqualTo(variantId));
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+        assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.ADOPTED);
+    }
+
+    /** 규칙도 영문 M을 읽어 같은 답을 내므로 LLM 보완이 아니라 SAME이다. */
+    @Test
+    void 영문_M이요는_규칙이_이미_같은_답을_낸다() {
+        var reading = validated("M이요", "OTHER", "M", "M", "");
+        assertThat(reading).isNotNull();
+        var result = LlmInquiry.decide(openStockClarify("M이요", LISTING), reading);
+        assertThat(result.decision()).isInstanceOfSatisfying(StockAnswer.class,
+                a -> assertThat(a.variant()).isEqualTo(RED_M));
+        assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.SAME);
+    }
+
+    /** 지적 1: 읽은 사이즈와 답 옵션의 사이즈가 다르면 채택하지 않는다. */
+    @Test
+    void 읽은_사이즈와_다른_옵션으로_답이_나오면_규칙_결과를_쓴다() {
+        var onlyL = new Listing(20, 1, "빈티지 셔츠", true, List.of(RED_L));
+        String body = "레드 엠 구할 수 있을까요?";
+        assertRuleResult(input(body, CONTEXT, onlyL, AutoReplySettings.DEFAULTS),
+                validated(body, "STOCK", "M", "엠", ""));
+    }
+
+    /** 지적 1 같은 원리: 열린 되묻기에서 읽은 사이즈와 다른 옵션으로 답이 나오면 채택하지 않는다. */
+    @Test
+    void 열린_되묻기_중_읽은_사이즈와_다른_옵션_답은_채택하지_않는다() {
+        String body = "엠이요";
+        var result = LlmInquiry.decide(openStockClarify(body, LISTING), validated(body, "OTHER", "L", "엠", ""));
+        // 근거 엠은 L을 가리키지 않아 validate가 버린다. 버린 읽기는 규칙 결과가 된다
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.RULE);
+    }
+
+    /** 지적 2: 문장부호가 낀 질문은 짧은 답이 아니다. */
+    @Test
+    void 열린_되묻기_중_문장부호가_낀_질문에는_사이즈를_붙이지_않는다() {
+        String body = "엠 = 사이즈?";
+        assertRuleResult(openStockClarify(body, LISTING), validated(body, "OTHER", "M", "엠", ""));
+    }
+
+    @Test
+    void 상품명이_비어_있으면_기존대로_채택한다() {
+        String body = "레드 엠 사이즈 있어요?";
+        var result = LlmInquiry.decide(input(body), validated(body, "STOCK", "M", "엠", ""));
+        assertThat(result.decision()).isInstanceOfSatisfying(StockAnswer.class,
+                a -> assertThat(a.variant()).isEqualTo(RED_M));
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+    }
+
+    @Test
+    void 상품명이_문맥_제목과_같고_본문에_그대로_있으면_채택한다() {
+        String body = "빈티지 셔츠 레드 M 구할 수 있을까요?";
+        var result = LlmInquiry.decide(input(body), validated(body, "STOCK", "M", "M", "빈티지 셔츠"));
+        assertThat(result.decision()).isInstanceOf(StockAnswer.class);
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+    }
+
+    /** 규칙 R1 / 지적 2: 제목 일부만 겹치는 상품명은 읽기를 버린다. */
+    @Test
+    void 상품명이_문맥_제목의_일부만_겹치면_읽기를_버린다() {
+        String body = "린넨 셔츠 레드 M 구할 수 있을까요?";
+        assertRuleResult(input(body), validated(body, "STOCK", "M", "M", "셔츠"));
+        var linenLike = new Listing(20, 1, "린넨풍 셔츠", true, List.of(RED_M, RED_L));
+        assertRuleResult(input(body, CONTEXT, linenLike, AutoReplySettings.DEFAULTS),
+                validated(body, "STOCK", "M", "M", "린넨 셔츠"));
+    }
+
+    /** 규칙 R1 / 지적 3: 상품명 글자가 본문에 그대로(문장부호 포함) 이어져 있지 않으면 버린다. */
+    @Test
+    void 상품명_낱말이_본문에_흩어져_있으면_읽기를_버린다() {
+        String body = "빈티지. 셔츠 말고 린넨 상의 레드 M 구할 수 있을까요?";
+        assertRuleResult(input(body), validated(body, "STOCK", "M", "M", "빈티지 셔츠"));
+    }
+
+    /** 규칙 R2 / 지적 4: "프리-미엄"의 프리는 사이즈 근거가 아니다. */
+    @Test
+    void 프리미엄의_프리를_사이즈로_읽은_읽기는_버린다() {
+        var free = new Variant(61, "레드", "FREE", 10, 0, true);
+        var listing = new Listing(20, 1, "빈티지 셔츠", true, List.of(RED_M, free));
+        String body = "프리-미엄 레드 구할 수 있을까요?";
+        assertRuleResult(input(body, CONTEXT, listing, AutoReplySettings.DEFAULTS),
+                validated(body, "STOCK", "FREE", "프리", ""));
+    }
+
+    private static InquiryInput openStockClarify(String body, Listing listing) {
+        var first = input("재고 있어요?", CONTEXT, listing, AutoReplySettings.DEFAULTS);
+        var line = InquiryLines.generated(InquiryDecider.decide(first), 1, NOW).getFirst();
+        var history = List.of(new HistoryItem(2, ChatSender.WHOLESALER, ChatMessageKind.CLARIFY, NOW,
+                ChatAutoReply.of(STOCK, 1L, line.autoReply()), null));
+        return input(body, CONTEXT, history, id -> listing, AutoReplySettings.DEFAULTS, List::of, List::of,
+                List::of);
     }
 
     private static InquiryReading reading(ChatIntent intent, String size, String product) {

@@ -4,6 +4,7 @@ import com.ondo.wholesale.chat.domain.ChatGeneratedBy;
 import com.ondo.wholesale.chat.domain.ChatHandoffReason;
 import com.ondo.wholesale.chat.domain.ChatIntent;
 import com.ondo.wholesale.chat.dto.ChatAutoReply.Detail;
+import com.ondo.wholesale.chat.inquiry.InquiryDecision.BackorderAnswer;
 import com.ondo.wholesale.chat.inquiry.InquiryDecision.BackorderClarify;
 import com.ondo.wholesale.chat.inquiry.InquiryDecision.Handoff;
 import com.ondo.wholesale.chat.inquiry.InquiryDecision.StockAnswer;
@@ -15,7 +16,6 @@ import com.ondo.wholesale.chat.inquiry.InquiryInput.Receivable;
 import com.ondo.wholesale.chat.repository.ChatMessageRepository.NewMessage;
 
 import java.text.Normalizer;
-import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
@@ -58,11 +58,14 @@ public final class LlmInquiry {
         InquiryInput cached = withCachedSources(input);
         InquiryDecision rule = InquiryDecider.decide(cached);
         String size = InquiryText.SIZE_ORDER.contains(reading.size()) ? reading.size() : "";
+        var open = InquiryDecider.openClarify(input.history(), input.now());
         String hint = switch (reading.intent()) {
             case STOCK -> size.isEmpty() ? "재고" : "재고 " + size;
             case BACKORDER -> "미송";
             case RECEIVABLE -> "미수";
-            case OTHER -> size;
+            // 열린 재고 되묻기에 사이즈만 짧게 답했을 때만 붙인다. 그 밖에 붙인 사이즈는 다른 질문을 재고 질문으로 바꾼다
+            case OTHER -> open != null && open.intent() == ChatIntent.STOCK
+                    && InquiryReading.sizeOnlyReply(input.body(), size) ? size : "";
         };
         if (hint.isEmpty()) {
             return Decided.ruleOnly(rule);
@@ -75,7 +78,7 @@ public final class LlmInquiry {
         } catch (RuntimeException e) {
             return Decided.ruleOnly(rule);
         }
-        if (!matchesProduct(amended, reading.productName())) {
+        if (!matchesProduct(amended, reading.productName()) || answersOtherSize(amended, size)) {
             return Decided.ruleOnly(rule);
         }
         boolean same = rule.equals(amended);
@@ -118,6 +121,16 @@ public final class LlmInquiry {
                 && !(amended instanceof Handoff || amended instanceof StockClarify || amended instanceof BackorderClarify);
     }
 
+    /** 게시 옵션이 하나뿐이면 판정기는 그 옵션으로 답한다. 읽은 사이즈와 다르면 소매가 묻지 않은 옵션이다. */
+    private static boolean answersOtherSize(InquiryDecision decision, String size) {
+        String answered = switch (decision) {
+            case StockAnswer answer -> answer.variant().size();
+            case BackorderAnswer answer -> answer.backorder().size();
+            default -> null;
+        };
+        return !size.isEmpty() && answered != null && !size.equals(answered);
+    }
+
     private static boolean matchesProduct(InquiryDecision decision, String productName) {
         Listing listing = switch (decision) {
             case StockAnswer answer -> answer.listing();
@@ -127,9 +140,8 @@ public final class LlmInquiry {
         if (listing == null || productName.isBlank()) {
             return true;
         }
-        String title = InquiryText.normalize(listing.title());
-        return Arrays.stream(InquiryText.normalize(productName).split(" "))
-                .filter(word -> word.codePointCount(0, word.length()) >= 2).anyMatch(title::contains);
+        // 일부만 겹치는 이름("셔츠", "린넨 셔츠")은 다른 상품일 수 있어 문맥 상품 제목과 완전히 같을 때만 받는다
+        return InquiryReading.tidy(productName).equals(InquiryReading.tidy(listing.title()));
     }
 
     /** 한 문의 안에서 규칙 판정과 보완 판정이 같은 값 또는 같은 조회 실패를 본다. */
