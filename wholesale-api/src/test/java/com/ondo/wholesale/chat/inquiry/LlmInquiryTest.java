@@ -1,0 +1,259 @@
+package com.ondo.wholesale.chat.inquiry;
+
+import com.ondo.wholesale.chat.domain.ChatGeneratedBy;
+import com.ondo.wholesale.chat.domain.ChatHandoffReason;
+import com.ondo.wholesale.chat.domain.ChatIntent;
+import com.ondo.wholesale.chat.domain.ChatMessageKind;
+import com.ondo.wholesale.chat.domain.ChatSender;
+import com.ondo.wholesale.chat.domain.StockBand;
+import com.ondo.wholesale.chat.dto.ChatAutoReply;
+import com.ondo.wholesale.chat.inquiry.InquiryDecision.BackorderClarify;
+import com.ondo.wholesale.chat.inquiry.InquiryDecision.Handoff;
+import com.ondo.wholesale.chat.inquiry.InquiryDecision.StockAnswer;
+import com.ondo.wholesale.chat.inquiry.InquiryDecision.StockClarify;
+import com.ondo.wholesale.chat.inquiry.InquiryInput.Backorder;
+import com.ondo.wholesale.chat.inquiry.InquiryInput.Catalog;
+import com.ondo.wholesale.chat.inquiry.InquiryInput.HistoryItem;
+import com.ondo.wholesale.chat.inquiry.InquiryInput.Listing;
+import com.ondo.wholesale.chat.inquiry.InquiryInput.Packing;
+import com.ondo.wholesale.chat.inquiry.InquiryInput.Receivable;
+import com.ondo.wholesale.chat.inquiry.InquiryInput.RoomContext;
+import com.ondo.wholesale.chat.inquiry.InquiryInput.Variant;
+import com.ondo.wholesale.chat.repository.ChatMessageRepository.NewMessage;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+
+import static com.ondo.wholesale.chat.domain.ChatIntent.BACKORDER;
+import static com.ondo.wholesale.chat.domain.ChatIntent.OTHER;
+import static com.ondo.wholesale.chat.domain.ChatIntent.RECEIVABLE;
+import static com.ondo.wholesale.chat.domain.ChatIntent.STOCK;
+import static org.assertj.core.api.Assertions.assertThat;
+
+/** 손으로 만든 방에서 규칙과 LLM 읽기 사이의 선택, 조회 횟수, 줄 표기를 본다. 저장과 API 응답은 통합 테스트 몫이다. */
+class LlmInquiryTest {
+
+    private static final Instant NOW = Instant.parse("2026-11-18T04:00:00Z");
+    private static final RoomContext CONTEXT = new RoomContext(20, NOW);
+    private static final Variant RED_M = new Variant(31, "레드", "M", 10, 0, true);
+    private static final Variant RED_L = new Variant(32, "레드", "L", 0, 5, true);
+    private static final Listing LISTING = new Listing(20, 1, "빈티지 셔츠", true, List.of(RED_M, RED_L));
+    private static final Backorder OPEN = new Backorder(41, 51, 1, 2, 31, "빈티지 셔츠", "레드", "M", 3,
+            NOW, LocalDate.of(2026, 12, 1), null);
+    private static final Receivable BALANCE = new Receivable(1, 2, 2500, 2500, 0, 0, 0, 0, true,
+            NOW.atOffset(ZoneOffset.UTC));
+
+    @Test
+    void 읽기가_없으면_기존_판정을_그대로_한_번만_한다() {
+        AtomicInteger reads = new AtomicInteger();
+        InquiryInput input = input("지금 미수 얼마예요?", CONTEXT, List.of(), id -> LISTING,
+                AutoReplySettings.DEFAULTS, () -> List.of(OPEN), () -> {
+                    reads.incrementAndGet();
+                    return List.of(BALANCE);
+                }, List::of);
+        var result = LlmInquiry.decide(input, null);
+        assertThat(result.decision()).isEqualTo(InquiryDecider.decide(input(input.body())));
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.RULE);
+        assertThat(reads).hasValue(1);
+    }
+
+    @Test
+    void 규칙이_답한_옵션과_금액은_LLM_유형과_사이즈가_달라도_보존한다() {
+        for (String body : List.of("레드 M 몇 장 남았어요?", "미수 얼마예요?")) {
+            InquiryInput input = input(body);
+            for (ChatIntent intent : ChatIntent.values()) {
+                var result = LlmInquiry.decide(input, reading(intent, "L", ""));
+                assertThat(result.decision()).isEqualTo(InquiryDecider.decide(input));
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"사장님이랑 통화할게요,HUMAN_REQUEST", "이거 깎아 주세요,NEGOTIATION",
+            "송금했어요,PAYMENT_REPORT", "재고랑 미수 얼마예요,MULTI_INTENT", "이번 달 미수 얼마예요,PERIOD"})
+    void 안전상_넘긴_사유를_바꾸지_않는다(String body, ChatHandoffReason reason) {
+        InquiryInput input = input(body);
+        var rule = InquiryDecider.decide(input);
+        assertThat(rule).isInstanceOfSatisfying(Handoff.class, h -> assertThat(h.reason()).isEqualTo(reason));
+        assertThat(LlmInquiry.decide(input, reading(STOCK, "M", "")).decision()).isEqualTo(rule);
+    }
+
+    @Test
+    void 놓친_재고_문의와_한글_사이즈_되묻기는_서버_구간으로_답한다() {
+        for (String body : List.of("레드 M 구할 수 있을까요?", "레드 엠 사이즈 있어요?")) {
+            var result = LlmInquiry.decide(input(body), reading(STOCK, "M", "셔츠"));
+            assertThat(result.decision()).isInstanceOfSatisfying(StockAnswer.class, a -> {
+                assertThat(a.variant()).isEqualTo(RED_M);
+                assertThat(a.band()).isEqualTo(StockBand.UNDER_50);
+            });
+            assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+            assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.ADOPTED);
+        }
+    }
+
+    @Test
+    void 가격이나_다른_상품_문의는_문맥_상품의_재고로_답하지_않는다() {
+        for (String body : List.of("이 셔츠 얼마예요?", "이 셔츠 가격 좀요", "이 셔츠 단가 궁금해요")) {
+            InquiryInput input = input(body);
+            assertThat(LlmInquiry.decide(input, reading(STOCK, "M", "셔츠")).decision())
+                    .isEqualTo(InquiryDecider.decide(input));
+        }
+        InquiryInput input = input("코튼 팬츠 레드 M 구할 수 있을까요?");
+        assertThat(LlmInquiry.decide(input, reading(STOCK, "M", "코튼 팬츠")).decision())
+                .isEqualTo(new Handoff(ChatHandoffReason.NO_INTENT, null));
+    }
+
+    @Test
+    void 문맥과_소유자와_항목_설정은_기존_판정기가_확인한다() {
+        var read = reading(STOCK, "M", "");
+        var body = "레드 M 구해요";
+        assertThat(LlmInquiry.decide(input(body, null, LISTING, AutoReplySettings.DEFAULTS), read).decision())
+                .isEqualTo(new Handoff(ChatHandoffReason.NO_CONTEXT, STOCK));
+        var foreign = new Listing(20, 99, LISTING.title(), true, LISTING.variants());
+        assertThat(LlmInquiry.decide(input(body, CONTEXT, foreign, AutoReplySettings.DEFAULTS), read).decision())
+                .isEqualTo(new Handoff(ChatHandoffReason.INVALID_TARGET, STOCK));
+        assertThat(LlmInquiry.decide(input(body, CONTEXT, LISTING, new AutoReplySettings(true, false, true, true)),
+                read).decision()).isEqualTo(new Handoff(ChatHandoffReason.OFF, STOCK));
+    }
+
+    @Test
+    void 되묻기는_같은_유형의_답이나_보기_안의_사이즈만_채택한다() {
+        InquiryInput first = input("재고 있어요?");
+        var clarify = InquiryDecider.decide(first);
+        assertThat(clarify).isInstanceOf(StockClarify.class);
+        assertThat(LlmInquiry.decide(first, reading(BACKORDER, "NONE", "")).decision()).isEqualTo(clarify);
+        var line = InquiryLines.generated(clarify, 1, NOW).getFirst();
+        var history = List.of(new HistoryItem(2, ChatSender.WHOLESALER, ChatMessageKind.CLARIFY, NOW,
+                ChatAutoReply.of(STOCK, 1L, line.autoReply()), null));
+        InquiryInput followup = input("엠이요", null, history, id -> LISTING, AutoReplySettings.DEFAULTS,
+                List::of, List::of, List::of);
+        assertThat(LlmInquiry.decide(followup, reading(OTHER, "M", "")).decision())
+                .isInstanceOfSatisfying(StockAnswer.class, a -> assertThat(a.variant()).isEqualTo(RED_M));
+        assertThat(LlmInquiry.decide(followup, reading(OTHER, "XL", "")).decision())
+                .isEqualTo(InquiryDecider.decide(followup));
+    }
+
+    @Test
+    void 미송은_어느_주문인지_되묻고_배송이나_기간별_미수는_넘긴다() {
+        var result = LlmInquiry.decide(input("주문한 거 언제쯤 들어와요?"), reading(BACKORDER, "NONE", ""));
+        assertThat(result.decision()).isInstanceOf(BackorderClarify.class);
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+        assertThat(LlmInquiry.decide(input("택배는요?"), reading(BACKORDER, "NONE", "")).decision())
+                .isEqualTo(new Handoff(ChatHandoffReason.NOT_SUPPORTED, BACKORDER));
+        assertThat(LlmInquiry.decide(input("이번 달 결제할 금액 얼마예요?"), reading(RECEIVABLE, "NONE", "")).decision())
+                .isEqualTo(new Handoff(ChatHandoffReason.PERIOD, RECEIVABLE));
+        assertThat(LlmInquiry.decide(input("아직 결제할 금액이 얼마예요?"), reading(RECEIVABLE, "NONE", "")).decision())
+                .isEqualTo(new Handoff(ChatHandoffReason.AMOUNT_UNSURE, RECEIVABLE));
+    }
+
+    @Test
+    void 읽기를_붙인_판정에서_조회가_던지면_앞의_규칙_결과를_쓴다() {
+        InquiryInput input = input("어떻게 되나요", null, List.of(), id -> null, AutoReplySettings.DEFAULTS,
+                () -> { throw new IllegalStateException(); }, List::of, List::of);
+        var result = LlmInquiry.decide(input, reading(BACKORDER, "NONE", ""));
+        assertThat(result.decision()).isEqualTo(new Handoff(ChatHandoffReason.NO_INTENT, null));
+        assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.RULE_KEPT);
+    }
+
+    @Test
+    void 두_판정이_같은_원본과_같은_조회_예외를_보고_조회는_한_번만_한다() {
+        AtomicInteger backorders = new AtomicInteger();
+        AtomicInteger packings = new AtomicInteger();
+        AtomicInteger receivables = new AtomicInteger();
+        Supplier<List<Backorder>> empty = () -> {
+            backorders.incrementAndGet();
+            return List.of();
+        };
+        Supplier<List<Packing>> brokenPacking = () -> {
+            packings.incrementAndGet();
+            throw new IllegalStateException();
+        };
+        Supplier<List<Receivable>> brokenBalance = () -> {
+            receivables.incrementAndGet();
+            throw new IllegalStateException();
+        };
+        var packing = input("미송", null, List.of(), id -> null, AutoReplySettings.DEFAULTS, empty, brokenBalance,
+                brokenPacking);
+        var balance = input("미수", null, List.of(), id -> null, AutoReplySettings.DEFAULTS, empty, brokenBalance,
+                brokenPacking);
+        assertThat(LlmInquiry.decide(packing, reading(BACKORDER, "NONE", "")).decision())
+                .isEqualTo(new Handoff(ChatHandoffReason.NO_BACKORDER, BACKORDER));
+        assertThat(LlmInquiry.decide(balance, reading(RECEIVABLE, "NONE", "")).decision())
+                .isEqualTo(new Handoff(ChatHandoffReason.LOOKUP_FAILED, RECEIVABLE));
+        assertThat(List.of(backorders.get(), packings.get(), receivables.get())).containsExactly(1, 1, 1);
+    }
+
+    @Test
+    void 답과_되묻기의_생성_표시만_바꾸고_넘김_줄은_그대로_쓴다() {
+        for (String body : List.of("레드 L 재고", "재고")) {
+            var result = LlmInquiry.decide(input(body), reading(STOCK, "NONE", ""));
+            assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.SAME);
+            assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+            var original = InquiryLines.generated(result.decision(), 1, NOW);
+            assertThat(LlmInquiry.label(original, ChatGeneratedBy.RULE)).isSameAs(original);
+            var labeled = LlmInquiry.label(original, result.generatedBy());
+            assertThat(labeled).hasSameSizeAs(original);
+            for (int i = 0; i < original.size(); i++) {
+                NewMessage line = labeled.get(i);
+                if (line.kind() == ChatMessageKind.HANDOFF) {
+                    assertThat(line).isSameAs(original.get(i));
+                } else {
+                    assertThat(line.autoReply().generatedBy()).isEqualTo(ChatGeneratedBy.LLM);
+                    assertThat(line).usingRecursiveComparison().ignoringFields("autoReply.generatedBy")
+                            .isEqualTo(original.get(i));
+                }
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"사장님이랑 통화할게요", "할인 부탁", "송금했어요", "전화 010-1234-5678",
+            "계좌 １２３ ４５.６７", "연락 1234567"})
+    void 안전_낱말과_긴_숫자는_보내지_않는다(String body) {
+        assertThat(LlmInquiry.worthAsking(body, false)).isFalse();
+    }
+
+    @Test
+    void 칩과_빈_글과_천_자를_넘는_글은_보내지_않는다() {
+        assertThat(LlmInquiry.worthAsking("문의", true)).isFalse();
+        assertThat(LlmInquiry.worthAsking(null, false)).isFalse();
+        assertThat(LlmInquiry.worthAsking(" ", false)).isFalse();
+        assertThat(LlmInquiry.worthAsking("가".repeat(1001), false)).isFalse();
+        assertThat(LlmInquiry.worthAsking("😀".repeat(1000), false)).isTrue();
+        assertThat(LlmInquiry.worthAsking("123456 이 셔츠 레드 엠 구해요", false)).isTrue();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"재고,STOCK", "미송,BACKORDER", "미수,RECEIVABLE"})
+    void 서버가_붙이는_낱말을_규칙이_그_유형으로_읽는다(String word, ChatIntent intent) {
+        assertThat(InquiryDecider.decide(input(word)).intent()).isEqualTo(intent);
+    }
+
+    private static InquiryReading reading(ChatIntent intent, String size, String product) {
+        return new InquiryReading(intent, size, product, false, false);
+    }
+
+    private static InquiryInput input(String body) {
+        return input(body, CONTEXT, LISTING, AutoReplySettings.DEFAULTS);
+    }
+
+    private static InquiryInput input(String body, RoomContext context, Listing listing, AutoReplySettings settings) {
+        return input(body, context, List.of(), id -> listing, settings, () -> List.of(OPEN), () -> List.of(BALANCE),
+                List::of);
+    }
+
+    private static InquiryInput input(String body, RoomContext context, List<HistoryItem> history, Catalog catalog,
+                                      AutoReplySettings settings, Supplier<List<Backorder>> backorders,
+                                      Supplier<List<Receivable>> receivables, Supplier<List<Packing>> packings) {
+        return new InquiryInput(body, null, NOW, LocalDate.of(2026, 11, 18), 1, 2, settings, context, history, catalog,
+                backorders, receivables, packings);
+    }
+}
