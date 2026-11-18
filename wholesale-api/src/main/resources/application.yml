@@ -89,3 +89,17 @@ ondo:
       # 잠금 안에서 원장 쓰기 말고 아무것도 안 하기 때문이다 — 여기서 외부 호출을
       # 하면 이 숫자가 뒤집힌다. 근거: load/settlement/README.md
       strategy: PESSIMISTIC
+
+  chat:
+    inquiry:
+      llm:
+        # 문의 자유 문장을 LLM으로 분류해 규칙 판정을 돕는다. 답 문장과 숫자는 지금처럼 규칙과 DB 가 낸다.
+        #
+        # 기본은 꺼짐이다. 로컬, 테스트, CI 는 늘 규칙만 돈다. 켜도 키가 비어 있으면 부르지 않는다.
+        # 키 자리표시자는 기본값이 빈 문자열이라 변수가 없어도 앱이 뜬다.
+        enabled: false
+        api-key: ${ONDO_LLM_API_KEY:}
+        model: claude-haiku-5-5
+        timeout: 1500ms           # 도착부터 트랜잭션 시작까지의 한도이자 SDK 호출 한도. 소매 서버가 5초를 기다린다
+        max-concurrent: 4         # 동시에 기다리는 호출 수. 차 있으면 기다리지 않고 규칙으로 간다
+        receivable-amount: false  # 미수 금액을 LLM 읽기로 답하는 갈래. 낱말을 사람이 확정하기 전까지 끈다
