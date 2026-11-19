@@ -177,3 +177,19 @@ resource "aws_iam_role_policy" "exec_wholesale_datadog_secret" {
   role   = aws_iam_role.exec_wholesale.id
   policy = data.aws_iam_policy_document.read_datadog_secret[0].json
 }
+
+# ── 문의 분류 LLM API 키 ─────────────────────────────────────
+#
+# 도매 실행 역할만 읽는다. 소매는 LLM 을 부르지 않는다.
+data "aws_iam_policy_document" "read_llm_secret" {
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.llm_api_key.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "exec_wholesale_llm_secret" {
+  name   = "read-llm-secret"
+  role   = aws_iam_role.exec_wholesale.id
+  policy = data.aws_iam_policy_document.read_llm_secret.json
+}
