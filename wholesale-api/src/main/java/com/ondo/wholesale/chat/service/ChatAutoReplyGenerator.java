@@ -11,7 +11,9 @@ import com.ondo.wholesale.chat.inquiry.InquiryInput.Listing;
 import com.ondo.wholesale.chat.inquiry.InquiryInput.RoomContext;
 import com.ondo.wholesale.chat.inquiry.InquiryLines;
 import com.ondo.wholesale.chat.inquiry.InquiryLines.OpenHandoff;
+import com.ondo.wholesale.chat.inquiry.InquiryReading;
 import com.ondo.wholesale.chat.inquiry.InquirySourceReader;
+import com.ondo.wholesale.chat.inquiry.LlmInquiry;
 import com.ondo.wholesale.chat.repository.ChatMessageRepository;
 import com.ondo.wholesale.chat.repository.ChatMessageRepository.NewMessage;
 import com.ondo.wholesale.chat.repository.ChatRoomRepository.RoomRow;
@@ -85,18 +87,25 @@ public class ChatAutoReplyGenerator {
      * @return 붙인 줄(sequence 오름차순). 열린 넘김과 이유가 같아 붙일 게 없으면 빈 목록
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public List<ChatMessage> reply(RoomRow roomBefore, RoomRow roomAfter, ChatMessage retailerMessage) {
+    public List<ChatMessage> reply(RoomRow roomBefore, RoomRow roomAfter, ChatMessage retailerMessage,
+                                   InquiryReading reading) {
         Instant now = retailerMessage.sentAt().toInstant();
         long replyTo = retailerMessage.sequence();
 
-        InquiryDecision decision;
+        LlmInquiry.Decided decided;
         try {
-            decision = guarded(() -> InquiryDecider.decide(input(roomAfter, retailerMessage, now)));
+            decided = guarded(() -> LlmInquiry.decide(input(roomAfter, retailerMessage, now), reading));
         } catch (RuntimeException e) {
             log.warn("자동 답 판정 실패 — 넘김으로 바꾼다. room={} sequence={}", roomAfter.id(), replyTo, e);
-            decision = new InquiryDecision.Handoff(ChatHandoffReason.NO_INTENT, null);
+            decided = LlmInquiry.Decided.ruleOnly(new InquiryDecision.Handoff(ChatHandoffReason.NO_INTENT, null));
         }
-        List<NewMessage> lines = InquiryLines.toAppend(InquiryLines.generated(decision, replyTo, now),
+        if (reading != null) {
+            log.info("문의 판정 room={} sequence={} adoption={} rule={} final={}", roomAfter.id(), replyTo,
+                    decided.adoption(), decided.rule().getClass().getSimpleName(),
+                    decided.decision().getClass().getSimpleName());
+        }
+        List<NewMessage> lines = InquiryLines.toAppend(
+                LlmInquiry.label(InquiryLines.generated(decided.decision(), replyTo, now), decided.generatedBy()),
                 openHandoff(roomBefore));
 
         List<ChatMessage> appended = new ArrayList<>(lines.size());

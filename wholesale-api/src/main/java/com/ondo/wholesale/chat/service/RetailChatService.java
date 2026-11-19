@@ -12,6 +12,7 @@ import com.ondo.wholesale.chat.dto.ChatRoomSummary.ChatMessagePreview;
 import com.ondo.wholesale.chat.dto.ChatSendResult;
 import com.ondo.wholesale.chat.dto.MarkChatReadRequest;
 import com.ondo.wholesale.chat.dto.SendChatMessageRequest;
+import com.ondo.wholesale.chat.inquiry.InquiryReading;
 import com.ondo.wholesale.chat.repository.ChatMessageRepository;
 import com.ondo.wholesale.chat.repository.ChatMessageRepository.NewMessage;
 import com.ondo.wholesale.chat.repository.ChatRoomRepository;
@@ -145,7 +146,8 @@ public class RetailChatService {
      * <p>자동 답은 같은 트랜잭션·같은 방 잠금 아래서 만든다. replay 는 처음 결과를 그대로 돌려준다 — 자동 답을 다시
      * 만들지 않고, id·sequence·checkedAt 도 처음 값이다. 멱등 기록에는 도매 모양 결과를 남기고 내보낼 때마다 소매 모양으로 바꾼다.
      */
-    public SendOutcome send(long retailerId, long roomId, String idempotencyKey, SendChatMessageRequest request) {
+    public SendOutcome send(long retailerId, long roomId, String idempotencyKey, SendChatMessageRequest request,
+                            InquiryReading reading) {
         UUID key = ChatCommandService.parseKey(idempotencyKey);
         if (request == null || request.body() == null) {
             throw ApiException.validationFailed("body", "메시지를 입력해 주세요.");
@@ -180,7 +182,7 @@ public class RetailChatService {
                 NewMessage.text(ChatSender.RETAILER, text, key, inquiry));
         // 내가 보낸 것까지는 읽은 것이다
         roomRepository.advanceRetailerRead(room.id(), appended.message().sequence());
-        List<ChatMessage> generated = autoReply.reply(room, appended.roomAfter(room), appended.message());
+        List<ChatMessage> generated = autoReply.reply(room, appended.roomAfter(room), appended.message(), reading);
 
         ChatSendResult result = new ChatSendResult(appended.message(), generated,
                 generated.isEmpty() ? ChatGeneration.NONE : ChatGeneration.DONE);

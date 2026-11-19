@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -48,7 +49,10 @@ import java.util.stream.StreamSupport;
  * {@link InquiryDecider#decide} → {@link InquiryLines#generated} → {@link InquiryLines#toAppend} 를 차례로 부른다 —
  * 운영 보내기({@code RetailChatService})가 부르는 순서와 같다. 투영만 테스트 몫이다.
  */
-final class GoldenInquiryJudge implements InquiryJudge {
+record GoldenInquiryJudge(Function<InquiryInput, InquiryDecision> decider) implements InquiryJudge {
+    GoldenInquiryJudge() {
+        this(InquiryDecider::decide);
+    }
 
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
     private static final JsonNodeFactory F = JsonNodeFactory.instance;
@@ -109,7 +113,7 @@ final class GoldenInquiryJudge implements InquiryJudge {
             InquiryInput input = new InquiryInput(step.get("text").asString(), inquiry(step.get("inquiry")), now,
                     LocalDate.ofInstant(now, SEOUL), wholesalerId, retailerId, settings, context, List.copyOf(history),
                     t::listing, () -> t.backorders, receivables, packings);
-            InquiryDecision decision = InquiryDecider.decide(input);
+            InquiryDecision decision = decider.apply(input);
             InquiryLines.OpenHandoff open = InquiryLines.openHandoffOf(history);
             history.add(new HistoryItem(mine, ChatSender.RETAILER, ChatMessageKind.TEXT, now, null, null));
             List<NewMessage> lines = InquiryLines.generated(decision, mine, now);
@@ -132,14 +136,14 @@ final class GoldenInquiryJudge implements InquiryJudge {
         List<HistoryItem> history = new ArrayList<>();
         if (normalizationCase.path("afterClarify").asBoolean(false)) {
             // 직전 유효 되묻기를 깐다: 1분 전 소매 질문 + 같은 시각 되묻기
-            InquiryDecision ask = InquiryDecider.decide(normalizationInput(t, "이 셔츠 몇 장 남았어요?", minuteAgo,
+            InquiryDecision ask = decider.apply(normalizationInput(t, "이 셔츠 몇 장 남았어요?", minuteAgo,
                     context, List.of()));
             history.add(new HistoryItem(1, ChatSender.RETAILER, ChatMessageKind.TEXT, minuteAgo, null, null));
             for (NewMessage line : InquiryLines.generated(ask, 1, minuteAgo)) {
                 history.add(historyOf(2, line, minuteAgo));
             }
         }
-        InquiryDecision d = InquiryDecider.decide(normalizationInput(t, normalizationCase.get("text").asString(), now,
+        InquiryDecision d = decider.apply(normalizationInput(t, normalizationCase.get("text").asString(), now,
                 context, history));
         return projectDecision(d);
     }
