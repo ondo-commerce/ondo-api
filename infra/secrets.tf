@@ -58,3 +58,26 @@ resource "aws_secretsmanager_secret" "datadog_api_key" {
 
   tags = { Name = "${local.prefix}-datadog-api-key" }
 }
+
+# ─────────────────────────────────────────────────────────────
+# 문의 분류 LLM API 키 (Anthropic)
+#
+# 도매 앱이 소매 문의 문장을 읽을 때 쓴다. 키는 앱 설정
+# ondo.chat.inquiry.llm.api-key 가 ONDO_LLM_API_KEY 로 받는다.
+#
+# Datadog 키처럼 값은 터라폼이 안 만든다. 껍데기만 만들고 값은 사람이 한 번 넣는다:
+#
+#   aws secretsmanager put-secret-value --profile ondo \
+#     --secret-id ondo-dev-llm-api-key --secret-string '<API 키>'
+#
+# ⚠️ 값을 넣기 전에 배포하면 도매 태스크가 안 뜬다. apply 하고 값 넣고, 그다음 배포한다.
+#    키가 들어가도 앱 설정 enabled 가 false 면 LLM 을 부르지 않는다.
+# ─────────────────────────────────────────────────────────────
+resource "aws_secretsmanager_secret" "llm_api_key" {
+  name        = "${local.prefix}-llm-api-key"
+  description = "Anthropic API key for chat inquiry classification (wholesale)"
+
+  recovery_window_in_days = 0
+
+  tags = { Name = "${local.prefix}-llm-api-key" }
+}

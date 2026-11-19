@@ -375,6 +375,8 @@ resource "aws_ecs_task_definition" "wholesale" {
       # 소매가 보낸 헤더를 대조할 값 (MUL-87). 없으면 앱이 안 뜬다 —
       # 시크릿을 빠뜨린 채 소매 접점이 열려 있는 것보다 낫다
       { name = "ONDO_GATEWAY_SECRET", valueFrom = local.gateway_secret },
+      # 문의 분류 LLM 키. 앱 설정 enabled 가 false 면 읽기만 하고 부르지 않는다
+      { name = "ONDO_LLM_API_KEY", valueFrom = aws_secretsmanager_secret.llm_api_key.arn },
     ]
 
     logConfiguration = {
