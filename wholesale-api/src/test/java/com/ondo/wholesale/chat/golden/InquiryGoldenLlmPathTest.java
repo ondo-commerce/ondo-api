@@ -51,16 +51,30 @@ class InquiryGoldenLlmPathTest {
                     && h.reason() != ChatHandoffReason.CLARIFY_AGAIN;
             case InquiryDecision.StockClarify c -> false;
             case InquiryDecision.BackorderClarify c -> false;
-            default -> true;
+            default -> false;
         };
         for (InquiryReading reading : READINGS) {
             var result = LlmInquiry.decide(turn, reading);
             assertThat(result.rule()).as("같은 턴의 규칙 판정").isEqualTo(rule);
             if (protectedDecision || input.inquiry() != null) {
                 assertThat(result.decision()).as("골든 문장 %s, 가짜 읽기 %s", input.body(), reading).isEqualTo(rule);
+            } else if (isAnswer(rule)) {
+                // 규칙이 답했으면 최종은 규칙 그대로이거나 넘김(종류 다름 MULTI_INTENT, 상품·사이즈 다름 NO_MATCH)이다
+                assertThat(List.of(rule, new InquiryDecision.Handoff(ChatHandoffReason.MULTI_INTENT, null),
+                        new InquiryDecision.Handoff(ChatHandoffReason.NO_MATCH, rule.intent())))
+                        .as("골든 문장 %s, 가짜 읽기 %s", input.body(), reading).contains(result.decision());
+                if (reading.intent() == rule.intent() && reading.size().equals(InquiryReading.NO_SIZE)
+                        && reading.productName().isEmpty()) {
+                    assertThat(result.decision()).as("읽기가 일치하면 규칙 그대로").isEqualTo(rule);
+                }
             }
         }
         return rule;
+    }
+
+    private static boolean isAnswer(InquiryDecision rule) {
+        return !(rule instanceof InquiryDecision.Handoff || rule instanceof InquiryDecision.StockClarify
+                || rule instanceof InquiryDecision.BackorderClarify);
     }
 
     private static List<InquiryReading> readings() {

@@ -66,13 +66,19 @@ class LlmInquiryTest {
     }
 
     @Test
-    void 규칙이_답한_옵션과_금액은_LLM_유형과_사이즈가_달라도_보존한다() {
-        for (String body : List.of("레드 M 몇 장 남았어요?", "미수 얼마예요?")) {
-            InquiryInput input = input(body);
-            for (ChatIntent intent : ChatIntent.values()) {
-                var result = LlmInquiry.decide(input, reading(intent, "L", ""));
-                assertThat(result.decision()).isEqualTo(InquiryDecider.decide(input));
-            }
+    void 규칙이_답했는데_LLM_읽기가_다르면_다른_답을_내지_않고_사장님께_넘긴다() {
+        InquiryInput stock = input("레드 M 몇 장 남았어요?");
+        for (ChatIntent intent : ChatIntent.values()) {
+            var result = LlmInquiry.decide(stock, reading(intent, "L", ""));
+            assertThat(result.decision()).isEqualTo(intent == STOCK
+                    ? new Handoff(ChatHandoffReason.NO_MATCH, STOCK)
+                    : new Handoff(ChatHandoffReason.MULTI_INTENT, null));
+        }
+        InquiryInput balance = input("미수 얼마예요?");
+        for (ChatIntent intent : ChatIntent.values()) {
+            var result = LlmInquiry.decide(balance, reading(intent, "L", ""));
+            assertThat(result.decision()).isEqualTo(intent == RECEIVABLE ? InquiryDecider.decide(balance)
+                    : new Handoff(ChatHandoffReason.MULTI_INTENT, null));
         }
     }
 
@@ -481,6 +487,69 @@ class LlmInquiryTest {
                 id -> withoutNavyL, opened.backorders(), opened.receivables(), opened.packings());
         assertRuleResult(narrowed, reading);
         assertThat(InquiryDecider.decide(narrowed)).isEqualTo(new Handoff(ChatHandoffReason.NO_INTENT, null));
+    }
+
+    @Test
+    void 규칙_답과_읽은_유형이_다르면_종류_의견_다름으로_넘긴다() {
+        String body = "레드 L 단가가 어떻게 되나요";
+        var result = LlmInquiry.decide(input(body), validated(body, "OTHER", "L", "L", ""));
+        assertThat(result.decision()).isEqualTo(new Handoff(ChatHandoffReason.MULTI_INTENT, null));
+        assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.VETOED_INTENT);
+    }
+
+    @Test
+    void 규칙_답과_읽은_상품이_다르면_상품_의견_다름으로_넘긴다() {
+        String body = "린넨 셔츠 레드 M 있어요?";
+        var result = LlmInquiry.decide(input(body), validated(body, "STOCK", "M", "M", "린넨 셔츠"));
+        assertThat(result.decision()).isEqualTo(new Handoff(ChatHandoffReason.NO_MATCH, STOCK));
+        assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.VETOED_PRODUCT);
+    }
+
+    @Test
+    void 읽은_상품_낱말이_모두_제목에_있거나_읽기가_없거나_되묻기_답이면_규칙_답을_유지한다() {
+        String body = "이 셔츠 레드 M 몇 장 남았어요?";
+        InquiryInput input = input(body);
+        var same = LlmInquiry.decide(input, validated(body, "STOCK", "M", "M", "셔츠"));
+        assertThat(same.decision()).isEqualTo(InquiryDecider.decide(input)).isInstanceOf(StockAnswer.class);
+        assertThat(same.adoption()).isNotIn(LlmInquiry.Adoption.VETOED_INTENT, LlmInquiry.Adoption.VETOED_PRODUCT,
+                LlmInquiry.Adoption.VETOED_SIZE);
+        var none = LlmInquiry.decide(input, null);
+        assertThat(none.decision()).isEqualTo(InquiryDecider.decide(input)).isInstanceOf(StockAnswer.class);
+
+        String reply = "레드 M이요";
+        var open = LlmInquiry.decide(openStockClarify(reply, LISTING), validated(reply, "OTHER", "M", "M", ""));
+        assertThat(open.decision()).isInstanceOfSatisfying(StockAnswer.class,
+                a -> assertThat(a.variant()).isEqualTo(RED_M));
+    }
+
+    /** 열린 되묻기의 종류 검사 예외는 "보기 선택 응답"(색 하나, 사이즈, 조사, 허용 낱말, 끝의 ?!~.)에만 적용한다. */
+    @ParameterizedTest
+    @CsvSource({"레드 M이요,M,M", "네이비 S요,S,S"})
+    void 열린_되묻기에_색과_사이즈로_보기를_고르면_답을_유지한다(String body, String size, String evidence) {
+        var result = LlmInquiry.decide(openStockClarify(body, TWO_COLORS), validated(body, "OTHER", size, evidence, ""));
+        assertThat(result.decision()).isInstanceOf(StockAnswer.class);
+        assertThat(result.adoption()).isNotEqualTo(LlmInquiry.Adoption.VETOED_INTENT);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"레드 L 단가가 어떻게 되나요,L,L", "레드 M 기장 어떻게 되나요?,M,M", "레드 M 가격은요?,M,M",
+            "네이비 L 레드요,L,L"})
+    void 열린_되묻기_중에도_보기_선택이_아닌_질문은_종류_의견_다름으로_넘긴다(String body, String size, String evidence) {
+        var result = LlmInquiry.decide(openStockClarify(body, TWO_COLORS), validated(body, "OTHER", size, evidence, ""));
+        assertThat(result.decision()).isEqualTo(new Handoff(ChatHandoffReason.MULTI_INTENT, null));
+        assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.VETOED_INTENT);
+    }
+
+    /** 현재 동작을 고정한다. 색과 한글 사이즈가 붙은 "레드 엠이요"는 보기 선택 응답으로 못 알아본다. 놓침이지만 안전한 쪽이다. */
+    @Test
+    void 현재_동작_레드_엠이요는_규칙_결과로_넘긴다() {
+        String body = "레드 엠이요";
+        InquiryInput input = openStockClarify(body, TWO_COLORS);
+        var result = LlmInquiry.decide(input, validated(body, "OTHER", "M", "엠", ""));
+        assertThat(result.decision()).isEqualTo(InquiryDecider.decide(input))
+                .isEqualTo(new Handoff(ChatHandoffReason.NO_INTENT, null));
+        assertThat(result.generatedBy()).isEqualTo(ChatGeneratedBy.RULE);
+        assertThat(result.adoption()).isEqualTo(LlmInquiry.Adoption.RULE_KEPT);
     }
 
     private static InquiryInput openStockClarify(String body, Listing listing) {

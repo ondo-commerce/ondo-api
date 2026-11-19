@@ -133,20 +133,20 @@ class ChatAutoReplyLlmIntegrationTest extends PostgresTestSupport {
     }
 
     @Test
-    void 규칙이_이미_확정한_답은_검증을_통과한_상충_읽기로도_바뀌지_않고_RULE이다() throws Exception {
+    void 규칙이_답했는데_검증을_통과한_읽기가_다른_유형이면_사장님께_넘긴다() throws Exception {
         long roomId = 방을_연다();
-        // 본문에 사이즈가 없고 유형만 미송으로 읽은 값이다. 검증은 통과하지만 규칙의 재고 답은 바꾸지 못한다
+        // 본문에 사이즈가 없고 유형만 미송으로 읽은 값이다. 검증은 통과하지만 규칙(재고)과 의견이 달라 넘긴다
         Fields conflict = new Fields("BACKORDER", false, "NONE", "", "", "", "", false);
         assertThat(InquiryReading.validate("블랙 M 몇 장 남았어요?", conflict)).as("검증을 통과하는 읽기").isNotNull();
         when(reader.read(anyString(), anyLong())).thenReturn(new Result(Kind.OK, conflict, 10, 5, null));
 
         보낸다(roomId, "블랙 M 몇 장 남았어요?")
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.generatedMessages[0].body")
-                        .value("블랙 M은 10~49장 있어요. 지금 주문할 수 있어요(한 번에 최대 500장)"))
-                .andExpect(jsonPath("$.data.generatedMessages[0].autoReply.generatedBy").value("RULE"));
+                .andExpect(jsonPath("$.data.generatedMessages[0].kind").value("HANDOFF"));
 
         verify(reader).read(eq("블랙 M 몇 장 남았어요?"), anyLong());
+        assertThat(jdbc.queryForObject("select handoff_reason from wholesale.chat_message"
+                + " where room_id = ? and kind = 'HANDOFF'", String.class, roomId)).isEqualTo("MULTI_INTENT");
     }
 
     @Test

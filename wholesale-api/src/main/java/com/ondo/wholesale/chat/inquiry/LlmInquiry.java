@@ -44,7 +44,8 @@ public final class LlmInquiry {
                 && !LONG_NUMBER.matcher(Normalizer.normalize(body, Normalizer.Form.NFKC)).find();
     }
 
-    public enum Adoption { SAME, ADOPTED, RULE_KEPT }
+    /** 로그와 측정용이다. VETOED_*는 규칙 답과 LLM 읽기가 그 칸(종류, 상품, 사이즈)에서 엇갈려 넘김으로 바꿨다는 뜻이다. */
+    public enum Adoption { SAME, ADOPTED, RULE_KEPT, VETOED_INTENT, VETOED_PRODUCT, VETOED_SIZE }
 
     public record Decided(InquiryDecision rule, InquiryDecision decision, ChatGeneratedBy generatedBy,
                           Adoption adoption) {
@@ -61,13 +62,19 @@ public final class LlmInquiry {
         InquiryDecision rule = InquiryDecider.decide(cached);
         String size = InquiryText.SIZE_ORDER.contains(reading.size()) ? reading.size() : "";
         var open = InquiryDecider.openClarify(input.history(), input.now());
+        Adoption veto = disagreement(input.body(), rule, reading, size, open);
+        if (veto != null) {
+            // 규칙 답과 LLM 읽기 중 어느 쪽이 맞는지 모른다. 틀린 답을 내느니 사장님께 넘긴다
+            return new Decided(rule, veto == Adoption.VETOED_INTENT ? new Handoff(ChatHandoffReason.MULTI_INTENT, null)
+                    : new Handoff(ChatHandoffReason.NO_MATCH, rule.intent()), ChatGeneratedBy.RULE, veto);
+        }
         String hint = switch (reading.intent()) {
             case STOCK -> size.isEmpty() ? "재고" : "재고 " + size;
             case BACKORDER -> "미송";
             case RECEIVABLE -> "미수";
             // 열린 재고 되묻기에 사이즈만 짧게 답했을 때만 붙인다. 그 밖에 붙인 사이즈는 다른 질문을 재고 질문으로 바꾼다
             case OTHER -> open != null && open.intent() == ChatIntent.STOCK
-                    && InquiryReading.sizeOnlyReply(input.body(), size) ? size : "";
+                    && InquiryReading.sizeOnlyReply(input.body(), size, List.of()) ? size : "";
         };
         if (hint.isEmpty()) {
             return Decided.ruleOnly(rule);
@@ -122,6 +129,45 @@ public final class LlmInquiry {
                 || reading.intent() == ChatIntent.OTHER && !InquiryReading.NO_SIZE.equals(reading.size());
         return compatible && amended.intent() == rule.intent()
                 && !(amended instanceof Handoff || amended instanceof StockClarify || amended instanceof BackorderClarify);
+    }
+
+    /** 규칙이 답했는데 LLM 읽기가 다른 칸. 답이 아니거나(넘김, 되묻기) 엇갈리지 않으면 null. */
+    private static Adoption disagreement(String body, InquiryDecision rule, InquiryReading reading, String size,
+                                         InquiryDecider.OpenClarify open) {
+        if (rule instanceof Handoff || rule instanceof StockClarify || rule instanceof BackorderClarify) {
+            return null;
+        }
+        // 열린 되묻기에 보기를 고른 답("레드 M이요")은 본문만 보는 LLM에게 기타로 보인다. 그 기타는 다른 의견이 아니다.
+        // 고른 답인지는 본문이 답한 옵션의 색, 사이즈, 허용 낱말뿐인지로 본다. "레드 M 가격은요?"는 고른 답이 아니다
+        String color = switch (rule) {
+            case StockAnswer a -> a.variant().color();
+            case BackorderAnswer a -> a.backorder().color();
+            default -> null;
+        };
+        boolean clarifyReply = reading.intent() == ChatIntent.OTHER && open != null && open.intent() == rule.intent()
+                && !size.isEmpty()
+                && InquiryReading.sizeOnlyReply(body, size, color == null ? List.of() : List.of(color));
+        if (reading.intent() != rule.intent() && !clarifyReply) {
+            return Adoption.VETOED_INTENT;
+        }
+        if (namesOtherProduct(rule, reading.productName())) {
+            return Adoption.VETOED_PRODUCT;
+        }
+        return answersOtherSize(rule, size) ? Adoption.VETOED_SIZE : null;
+    }
+
+    /**
+     * 읽은 상품 이름에 답한 상품 제목에 없는 낱말이 있는가. 제목과 완전히 같아야 하는 채택과 달리 막을 때는 낱말만 본다.
+     * "이 셔츠"의 셔츠까지 막으면 문맥 상품을 가리킨 재고 질문도 넘어간다. "린넨 셔츠"의 린넨은 다른 상품이다.
+     */
+    private static boolean namesOtherProduct(InquiryDecision answer, String productName) {
+        String title = switch (answer) {
+            case StockAnswer a -> a.listing().title();
+            case BackorderAnswer a -> a.backorder().title();
+            default -> null;
+        };
+        return title != null && !productName.isBlank() && !List.of(InquiryReading.tidy(title).split(" "))
+                .containsAll(List.of(InquiryReading.tidy(productName).split(" ")));
     }
 
     /** 게시 옵션이 하나뿐이면 판정기는 그 옵션으로 답한다. 읽은 사이즈와 다르면 소매가 묻지 않은 옵션이다. */

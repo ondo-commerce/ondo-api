@@ -436,6 +436,8 @@ class InquiryLlmMeasurement {
         md.append("- LLM 해석으로 최종 결과가 바뀐 건수(넘김→답 + 넘김→되묻기 + 되묻기→답): %d%n".formatted(
                 directions.getOrDefault("넘김→답", 0) + directions.getOrDefault("넘김→되묻기", 0)
                         + directions.getOrDefault("되묻기→답", 0)));
+        md.append("- 의견 다름으로 넘김(규칙 답이 있었는데 LLM 읽기가 달랐다): %s%n".formatted(
+                vetoCounts(steps.stream().map(s -> s.turn().decided().adoption()).toList())));
         md.append("- 정답 일치(대상 A 단계): 규칙 경로 %d / %d, LLM 경로 %d / %d%n".formatted(
                 steps.stream().filter(StepResult::ruleRight).count(), steps.size(),
                 steps.stream().filter(StepResult::llmRight).count(), steps.size()));
@@ -447,13 +449,13 @@ class InquiryLlmMeasurement {
         md.append("- 폴백: %s%n".formatted(outcomes(steps.stream().map(StepResult::turn).toList())));
         md.append("- 사람이 검수한 잘못된 자동 답 수: (검수 뒤 적는다)%n%n".formatted());
         md.append("### 검수할 단계 (규칙과 최종이 다르거나 LLM 경로가 정답과 다르다)%n%n".formatted());
-        md.append("| 정답셋 id | 원문 | 방향 | 규칙 | 최종 | LLM 원값 | 정답 일치 규칙/LLM |%n|---|---|---|---|---|---|---|%n".formatted());
+        md.append("| 정답셋 id | 원문 | 방향 | adoption | 규칙 | 최종 | LLM 원값 | 정답 일치 규칙/LLM |%n|---|---|---|---|---|---|---|---|%n".formatted());
         for (StepResult s : steps) {
             LlmInquiry.Decided d = s.turn().decided();
             boolean same = d.rule().equals(d.decision());
-            if (!same || !s.llmRight()) {
-                md.append("| %s | %s | %s | %s | %s | %s | %s/%s |%n".formatted(s.id(), cell(s.text()),
-                        same ? "같음" : direction(d.rule(), d.decision()), describe(d.rule()), describe(d.decision()),
+            if (!same || !s.llmRight() || isVeto(d.adoption())) {
+                md.append("| %s | %s | %s | %s | %s | %s | %s | %s/%s |%n".formatted(s.id(), cell(s.text()),
+                        same ? "같음" : direction(d.rule(), d.decision()), d.adoption(), describe(d.rule()), describe(d.decision()),
                         cell(fieldsOf(s.turn())), s.ruleRight() ? "O" : "X", s.llmRight() ? "O" : "X"));
             }
         }
@@ -468,6 +470,8 @@ class InquiryLlmMeasurement {
                             .count()));
             md.append("- 실패: HANDOFF는 넘김이 아니면, NO_STOCK_ANSWER는 답(재고, 미송, 포장, 미수)이 나오면 실패. "
                     + "반복 중 한 번이라도 어긋나면 실패. ANSWER_OK는 기록만%n".formatted());
+            md.append("- 의견 다름으로 넘김: %s%n".formatted(
+                    vetoCounts(called.stream().map(t -> t.decided().adoption()).toList())));
             md.append("- 폴백: %s%n- 규칙만으로도 실패: 같은 입력의 규칙 판정이 이미 기대와 어긋난다. LLM 탓이 아니다%n%n".formatted(
                     outcomes(called)));
             md.append("| 그룹 | 문항 | 실패 | 실패 id | 규칙만으로도 실패 id |%n|---|---|---|---|---|%n".formatted());
@@ -483,14 +487,15 @@ class InquiryLlmMeasurement {
                         String.join(", ", failed), String.join(", ", ruleFailed)));
             });
             md.append("%n### 실패 문항과 ANSWER_OK 기록%n%n".formatted());
-            md.append("| id | 기대 | 문맥 | 원문 | 규칙 | 회차별 최종 | 회차별 LLM 원값 |%n|---|---|---|---|---|---|---|%n".formatted());
+            md.append("| id | 기대 | 문맥 | 원문 | 규칙 | 회차별 최종 | 회차별 adoption | 회차별 LLM 원값 |%n|---|---|---|---|---|---|---|---|%n".formatted());
             for (ProbeResult r : probeResults) {
                 JsonNode p = r.probe();
                 if (r.failed() || "ANSWER_OK".equals(p.get("expect").asString())) {
-                    md.append("| %s | %s%s | %s | %s | %s | %s | %s |%n".formatted(p.get("id").asString(),
+                    md.append("| %s | %s%s | %s | %s | %s | %s | %s | %s |%n".formatted(p.get("id").asString(),
                             p.get("expect").asString(), r.failed() ? " 실패" : "", p.get("context").asString(),
                             cell(p.get("body").asString()), describe(r.runs().getFirst().decided().rule()),
                             r.runs().stream().map(t -> describe(t.decided().decision())).toList(),
+                            r.runs().stream().map(t -> t.decided().adoption()).toList(),
                             cell(r.runs().stream().map(InquiryLlmMeasurement::fieldsOf).toList().toString())));
                 }
             }
@@ -598,6 +603,19 @@ class InquiryLlmMeasurement {
     }
 
     /** call은 거름에 걸려 안 불렀으면 null이다. */
+    private static boolean isVeto(LlmInquiry.Adoption a) {
+        return a == LlmInquiry.Adoption.VETOED_INTENT || a == LlmInquiry.Adoption.VETOED_PRODUCT
+                || a == LlmInquiry.Adoption.VETOED_SIZE;
+    }
+
+    /** VETOED_* 종류별 건수. 없는 종류도 0으로 적는다. */
+    private static String vetoCounts(List<LlmInquiry.Adoption> all) {
+        return "종류 다름(VETOED_INTENT) %d, 상품 다름(VETOED_PRODUCT) %d, 사이즈 다름(VETOED_SIZE) %d".formatted(
+                all.stream().filter(a -> a == LlmInquiry.Adoption.VETOED_INTENT).count(),
+                all.stream().filter(a -> a == LlmInquiry.Adoption.VETOED_PRODUCT).count(),
+                all.stream().filter(a -> a == LlmInquiry.Adoption.VETOED_SIZE).count());
+    }
+
     private record Turn(Call call, InquiryReading reading, LlmInquiry.Decided decided) {
     }
 

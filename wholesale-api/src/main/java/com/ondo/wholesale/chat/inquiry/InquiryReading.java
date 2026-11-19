@@ -93,15 +93,22 @@ public record InquiryReading(ChatIntent intent, String size, String productName,
         return Pattern.compile("(?<!\\S)" + spaced(alias) + ALIAS_TAIL).matcher(tidy).find();
     }
 
-    /** 본문이 그 사이즈 하나와 허용한 낱말뿐인 짧은 답인가. "엠 사이즈 기장 어떻게 되나요?", "엠 = 사이즈?"는 아니다. */
-    static boolean sizeOnlyReply(String body, String size) {
+    /**
+     * 본문이 그 사이즈 하나와 허용한 낱말뿐인 짧은 답인가. "엠 사이즈 기장 어떻게 되나요?", "엠 = 사이즈?"는 아니다.
+     * colors를 주면 그 색 이름도 낱말로 받는다("레드 M이요"). 비어 있으면 사이즈만 받는다.
+     */
+    static boolean sizeOnlyReply(String body, String size, List<String> colors) {
         String sizeWord = Stream.concat(KOREAN_SIZES.entrySet().stream().filter(e -> e.getValue().equals(size))
                         .map(e -> spaced(e.getKey())), Stream.of(Pattern.quote(size.toLowerCase(Locale.ROOT))))
                 .collect(Collectors.joining("|"));
-        String filler = "(?:" + String.join("|", REPLY_FILLERS) + ")";
+        String color = colors.stream().map(c -> Pattern.quote(tidy(c))).collect(Collectors.joining("|"));
+        String word = "(?:" + String.join("|", REPLY_FILLERS)
+                + (color.isEmpty() ? "" : "|(?:" + color + ")" + PARTICLE + "*") + ")";
+        // 색과 사이즈를 붙여 쓴 "레드M이요"도 받는다
+        String glued = color.isEmpty() ? "" : "(?:" + color + ")?";
         // 문장부호를 지우면 "엠 = 사이즈?"도 짧은 답이 된다. 문장 끝의 ? ! ~ . 만 허용한다
-        return Pattern.compile("(?:" + filler + " )*(?:" + sizeWord + ")" + PARTICLE + "*(?: " + filler + ")*[?!~.]*")
-                .matcher(tidy(body)).matches();
+        return Pattern.compile("(?:" + word + " )*" + glued + "(?:" + sizeWord + ")" + PARTICLE + "*(?: " + word
+                + ")*[?!~.]*").matcher(tidy(body)).matches();
     }
 
     private static String spaced(String alias) {
