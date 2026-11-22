@@ -12,3 +12,13 @@ spring:
     # 붙일 수 있어서, 시드 계정이 운영에 들어가는 걸 사람이 기억해서 막아야 한다.
     # 파일로 옮기면 dev 프로필일 때만 읽히니 실수로 못 켠다 (MUL-103).
     locations: classpath:db/migration,classpath:db/seed
+
+ondo:
+  chat:
+    inquiry:
+      llm:
+        # 공개 개발 서버에서만 문의 분류 LLM 을 켠다. 로컬, 테스트, 운영은 application.yml 의 false 그대로다.
+        # 끌 때는 이 묶음을 지우는 PR 하나면 된다. 키는 ECS 시크릿 ONDO_LLM_API_KEY 로 들어온다.
+        enabled: true
+        # 로컬 측정 p95 가 2.25초라 1.5초면 11~14% 가 규칙 답으로 간다. 소매 5초 대기 안에서 2.5초로 올린다
+        timeout: 2500ms
